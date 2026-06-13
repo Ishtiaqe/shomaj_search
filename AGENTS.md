@@ -283,9 +283,8 @@ gh repo view Ishtiaqe/shomaj_search
 ## 📦 Git Commit History (Latest First)
 
 | Hash | Message |
-|------|---------|
-| (see `git log`) | feat: add media schema, image/video search endpoints, Google-like UI |
-| (see `git log`) | feat: initial full-stack implementation — FastAPI + SQLite FTS5 + MV3 extension |
+|------|--------|
+| `8b03842` | feat: initial full-stack implementation of Shomaj Search |
 
 ---
 
