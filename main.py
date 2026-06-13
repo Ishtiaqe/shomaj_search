@@ -375,6 +375,8 @@ async def search(
     private_only: bool = Query(False, description="Only return private (extension-indexed) pages"),
     domain: str = Query("",  description="Filter by domain (site: operator)"),
     safe_search: bool = Query(True, description="Filter adult/NSFW content"),
+    start_date: Optional[int] = Query(None, description="Start UNIX timestamp"),
+    end_date: Optional[int] = Query(None, description="End UNIX timestamp"),
 ):
     """
     Full-text search using SQLite FTS5 MATCH with native bm25() scoring.
@@ -388,7 +390,7 @@ async def search(
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
     # Cache lookup
-    cache_key = ("web", q_clean, limit, offset, private_only, domain.strip(), safe_search)
+    cache_key = ("web", q_clean, limit, offset, private_only, domain.strip(), safe_search, start_date, end_date)
     cached_res = search_cache.get(cache_key)
     if cached_res is not None:
         return cached_res
@@ -412,6 +414,12 @@ async def search(
         meta_params.append(domain.strip().lstrip("www."))
     if safe_search:
         meta_filters.append("m.url NOT LIKE '%porn%' AND m.url NOT LIKE '%sex%' AND m.url NOT LIKE '%xxx%'")
+    if start_date is not None:
+        meta_filters.append("m.last_scanned >= ?")
+        meta_params.append(start_date)
+    if end_date is not None:
+        meta_filters.append("m.last_scanned <= ?")
+        meta_params.append(end_date)
 
     meta_where = ("AND " + " AND ".join(meta_filters)) if meta_filters else ""
 
@@ -503,6 +511,8 @@ async def search_images(
     offset: int = Query(0,  ge=0),
     domain: str = Query("", description="Filter by source domain"),
     safe_search: bool = Query(True, description="Filter adult/NSFW content"),
+    start_date: Optional[int] = Query(None, description="Start UNIX timestamp"),
+    end_date: Optional[int] = Query(None, description="End UNIX timestamp"),
 ):
     """
     Searches image metadata using FTS5 over title, description, and
@@ -513,7 +523,7 @@ async def search_images(
     if not q_clean:
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
-    cache_key = ("images", q_clean, limit, offset, domain.strip(), safe_search)
+    cache_key = ("images", q_clean, limit, offset, domain.strip(), safe_search, start_date, end_date)
     cached_res = search_cache.get(cache_key)
     if cached_res is not None:
         return cached_res
@@ -535,6 +545,12 @@ async def search_images(
         params.append(domain.strip().lstrip("www."))
     if safe_search:
         extra_filters.append("m.media_url NOT LIKE '%porn%' AND m.media_url NOT LIKE '%sex%' AND m.media_url NOT LIKE '%xxx%'")
+    if start_date is not None:
+        extra_filters.append("m.indexed_at >= ?")
+        params.append(start_date)
+    if end_date is not None:
+        extra_filters.append("m.indexed_at <= ?")
+        params.append(end_date)
 
     extra_where = ("AND " + " AND ".join(extra_filters)) if extra_filters else ""
 
@@ -609,6 +625,8 @@ async def search_videos(
     min_duration: float = Query(0.0, ge=0.0, description="Minimum duration in seconds"),
     max_duration: float = Query(0.0, ge=0.0, description="Maximum duration in seconds (0=any)"),
     safe_search: bool = Query(True, description="Filter adult/NSFW content"),
+    start_date: Optional[int] = Query(None, description="Start UNIX timestamp"),
+    end_date: Optional[int] = Query(None, description="End UNIX timestamp"),
 ):
     """
     Searches video metadata using FTS5 over title, description, and
@@ -619,7 +637,7 @@ async def search_videos(
     if not q_clean:
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
-    cache_key = ("videos", q_clean, limit, offset, domain.strip(), min_duration, max_duration, safe_search)
+    cache_key = ("videos", q_clean, limit, offset, domain.strip(), min_duration, max_duration, safe_search, start_date, end_date)
     cached_res = search_cache.get(cache_key)
     if cached_res is not None:
         return cached_res
@@ -646,11 +664,17 @@ async def search_videos(
         extra_params.append(max_duration)
     if safe_search:
         extra_filters.append("m.media_url NOT LIKE '%porn%' AND m.media_url NOT LIKE '%sex%' AND m.media_url NOT LIKE '%xxx%'")
+    if start_date is not None:
+        extra_filters.append("m.indexed_at >= ?")
+        extra_params.append(start_date)
+    if end_date is not None:
+        extra_filters.append("m.indexed_at <= ?")
+        extra_params.append(end_date)
 
     extra_where = ("AND " + " AND ".join(extra_filters)) if extra_filters else ""
 
     try:
-        select_params = [q_clean] + extra_params + [limit, offset]
+        select_params = [q_clean] + [fts_query] + extra_params + [limit, offset]
         rows = conn.execute(
             f"""
             SELECT
@@ -842,6 +866,8 @@ async def search_products(
     prioritize_stock: bool = Query(True, description="Prioritize ready stock (in_stock first)"),
     domain:           str  = Query("", description="Filter by source domain"),
     safe_search:      bool = Query(True, description="Filter adult/NSFW content"),
+    start_date: Optional[int] = Query(None, description="Start UNIX timestamp"),
+    end_date: Optional[int] = Query(None, description="End UNIX timestamp"),
 ):
     """
     Searches products index using FTS5 over name, description, brand.
@@ -851,7 +877,7 @@ async def search_products(
     if not q_clean:
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
-    cache_key = ("products", q_clean, limit, offset, sort, prioritize_stock, domain.strip(), safe_search)
+    cache_key = ("products", q_clean, limit, offset, sort, prioritize_stock, domain.strip(), safe_search, start_date, end_date)
     cached_res = search_cache.get(cache_key)
     if cached_res is not None:
         return cached_res
@@ -873,6 +899,12 @@ async def search_products(
         extra_params.append(domain.strip().lstrip("www."))
     if safe_search:
         extra_filters.append("p.url NOT LIKE '%porn%' AND p.url NOT LIKE '%sex%' AND p.url NOT LIKE '%xxx%'")
+    if start_date is not None:
+        extra_filters.append("p.extracted_at >= ?")
+        extra_params.append(start_date)
+    if end_date is not None:
+        extra_filters.append("p.extracted_at <= ?")
+        extra_params.append(end_date)
 
     extra_where = ("AND " + " AND ".join(extra_filters)) if extra_filters else ""
 

@@ -626,6 +626,92 @@ def test_safe_search_filtering() -> None:
     _record("Unsafe search query allows adult results", hits_unsafe > 0)
 
 
+def test_date_range_filtering() -> None:
+    """Validate date range filtering logic for Web, Images, Videos, and Products."""
+    import time
+    ts = int(time.time())
+    
+    web_url = f"https://example.com/date-test-web-{ts}"
+    img_url = f"https://example.com/date-test-img-{ts}.jpg"
+    vid_url = f"https://example.com/date-test-vid-{ts}.mp4"
+    prod_url = f"https://example.com/products/date-test-prod-{ts}"
+    
+    five_days_ago = ts - 5 * 86400
+    two_days_ago = ts - 2 * 86400
+    ten_days_ago = ts - 10 * 86400
+    three_days_ago = ts - 3 * 86400
+
+    # 1. Ingest Web, Image, Video
+    payload = {
+        "url": web_url,
+        "title": "Date Filter Web Page",
+        "text": "This is datefilterwebtest content for testing.",
+        "links": [],
+        "images": [{"url": img_url, "alt": "datefilterimgtest"}],
+        "videos": [{"url": vid_url, "title": "datefiltervidtest", "thumbnail_url": img_url}]
+    }
+    code, body = http_post("/api/index", payload)
+    _record("Ingest date-test content returns 200", code == 200)
+
+    # 2. Ingest Product directly via SQLite
+    conn = sqlite3.connect("shomaj_search.db")
+    conn.execute(
+        """
+        INSERT INTO product_index (url, name, description, brand, sku, price, price_text, currency, availability, image_url, domain, is_private, schema_type, raw_schema, extracted_at, last_checked)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (prod_url, "DateFilterProduct", "datefilterprodtest description", "Apple", "DFP-SKU", 100.0, "৳ 100", "BDT", "in_stock", img_url, "example.com", 0, "json-ld", "{}", five_days_ago, ts)
+    )
+    conn.execute("INSERT INTO product_fts (url, name, description, brand) VALUES (?, ?, ?, ?)", (prod_url, "DateFilterProduct", "datefilterprodtest description", "Apple"))
+    
+    # 3. Update Web, Image, Video timestamps to 5 days ago in the DB
+    conn.execute("UPDATE crawl_metadata SET last_scanned = ? WHERE url = ?", (five_days_ago, web_url))
+    conn.execute("UPDATE media_index SET indexed_at = ? WHERE media_url = ? OR media_url = ?", (five_days_ago, img_url, vid_url))
+    conn.commit()
+    conn.close()
+
+    time.sleep(0.1)
+
+    # 4. Search Web
+    code_web1, body_web1 = http_get(f"/api/search?q=datefilterwebtest&start_date={two_days_ago}")
+    _record("Web search (excludes 5d ago) has 0 hits", body_web1.get("data", {}).get("total_hits", 0) == 0)
+    
+    code_web2, body_web2 = http_get(f"/api/search?q=datefilterwebtest&start_date={ten_days_ago}&end_date={three_days_ago}")
+    _record("Web search (includes 5d ago) has 1 hit", body_web2.get("data", {}).get("total_hits", 0) == 1)
+
+    # 5. Search Images
+    code_img1, body_img1 = http_get(f"/api/search/images?q=datefilterimgtest&start_date={two_days_ago}")
+    _record("Image search (excludes 5d ago) has 0 hits", body_img1.get("data", {}).get("total_hits", 0) == 0)
+    
+    code_img2, body_img2 = http_get(f"/api/search/images?q=datefilterimgtest&start_date={ten_days_ago}&end_date={three_days_ago}")
+    _record("Image search (includes 5d ago) has 1 hit", body_img2.get("data", {}).get("total_hits", 0) == 1)
+
+    # 6. Search Videos
+    code_vid1, body_vid1 = http_get(f"/api/search/videos?q=datefiltervidtest&start_date={two_days_ago}")
+    _record("Video search (excludes 5d ago) has 0 hits", body_vid1.get("data", {}).get("total_hits", 0) == 0)
+    
+    code_vid2, body_vid2 = http_get(f"/api/search/videos?q=datefiltervidtest&start_date={ten_days_ago}&end_date={three_days_ago}")
+    _record("Video search (includes 5d ago) has 1 hit", body_vid2.get("data", {}).get("total_hits", 0) == 1)
+
+    # 7. Search Products
+    code_prod1, body_prod1 = http_get(f"/api/search/products?q=datefilterprodtest&start_date={two_days_ago}")
+    _record("Product search (excludes 5d ago) has 0 hits", body_prod1.get("data", {}).get("total_hits", 0) == 0)
+    
+    code_prod2, body_prod2 = http_get(f"/api/search/products?q=datefilterprodtest&start_date={ten_days_ago}&end_date={three_days_ago}")
+    _record("Product search (includes 5d ago) has 1 hit", body_prod2.get("data", {}).get("total_hits", 0) == 1)
+
+    # Clean up
+    conn = sqlite3.connect("shomaj_search.db")
+    conn.execute("DELETE FROM crawl_metadata WHERE url = ?", (web_url,))
+    conn.execute("DELETE FROM search_index WHERE url = ?", (web_url,))
+    conn.execute("DELETE FROM media_index WHERE media_url = ? OR media_url = ?", (img_url, vid_url))
+    conn.execute("DELETE FROM media_fts WHERE media_url = ? OR media_url = ?", (img_url, vid_url))
+    conn.execute("DELETE FROM product_index WHERE url = ?", (prod_url,))
+    conn.execute("DELETE FROM product_fts WHERE url = ?", (prod_url,))
+    conn.commit()
+    conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Main runner
 # ---------------------------------------------------------------------------
@@ -673,6 +759,7 @@ def main() -> int:
         ("21. Safe Search Filtering",     test_safe_search_filtering),
         ("22. Configuration Persistence", test_config_persistence),
         ("23. Result Ranking Feedback",   test_search_feedback),
+        ("24. Date Range Filtering",      test_date_range_filtering),
     ]
 
     for group_name, fn in tests:

@@ -83,6 +83,16 @@
 - Cleaned up mock product database records created during integration tests.
 - Extended the integration test suite to cover feedback vote submission and FTS5 ranking adjustments (all 80/80 assertions passing).
 
+**Session 6 — 2026-06-14 (Date Range Filter + Custom Calendar Picker + Video Parameter Fix)**
+**Agent:** Antigravity (Gemini 3.5 Flash High)
+
+**Accomplished:**
+- Added `start_date` and `end_date` UNIX timestamp filters to `/api/search`, `/api/search/images`, `/api/search/videos`, and `/api/search/products` search endpoints and search caches.
+- Integrated date constraints using SQLite fields: `last_scanned` (Web), `indexed_at` (Images/Videos), and `extracted_at` (Products).
+- Designed and built a premium glassmorphic Date Filter UI component with quick presets (24h, past week, past month) and a "Custom range..." calendar picker starting on Sunday and formatting input to `dd-mm-yyyy`.
+- Fixed a parameter alignment bug in `/api/search/videos` where `fts_query` was missing from `select_params`, breaking video queries.
+- Extended integration test suite with `test_date_range_filtering` testing Web, Images, Videos, and Products date filtering (now 89/89 assertions passing).
+
 ---
 
 ## 📁 File Inventory
@@ -291,6 +301,7 @@ CREATE TABLE result_feedback (
 - [x] Search result caching (sub-millisecond fast LRU memory cache with write-invalidation)
 - [x] `robots.txt` compliance (checking disallowed directories, cached asynchronously)
 - [x] Sitemap.xml discovery (seed crawl queue from robots.txt and sitemap files)
+- [x] Date range filter (Any time, 24h, past week, past month, custom calendar picker starting on Sunday)
 
 ---
 
@@ -308,7 +319,6 @@ CREATE TABLE result_feedback (
 
 ### Medium Priority  
 - [ ] **Related searches** — suggest related queries based on index content
-- [ ] **Date range filter** — filter results by `last_scanned` date
 - [ ] **Domain filter** — restrict search to specific domain (site: operator)
 - [ ] **File type filter** — search only PDF, DOC, etc.
 - [ ] **Infinite scroll** — replace pagination with infinite scroll on results
@@ -375,4 +385,4 @@ gh repo view Ishtiaqe/shomaj_search
 
 ---
 
-*Last updated: 2026-06-14 by Antigravity agent (Session 2)*
+*Last updated: 2026-06-14 by Antigravity agent (Session 6)*

@@ -1051,6 +1051,38 @@
     .feedback-btn.active-minus span {
       color: var(--accent-yellow);
     }
+    .date-option {
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      font-size: 13px;
+      cursor: pointer;
+      transition: var(--transition);
+      margin-bottom: 2px;
+    }
+    .date-option:hover, .date-option.active {
+      background: rgba(108, 99, 255, 0.1);
+      color: var(--accent-violet);
+    }
+    .calendar-day-cell {
+      padding: 6px 0;
+      border-radius: 4px;
+      cursor: pointer;
+      color: var(--text-secondary);
+      transition: var(--transition);
+    }
+    .calendar-day-cell:hover {
+      background: rgba(62, 207, 207, 0.15);
+      color: var(--accent-teal);
+    }
+    .calendar-day-cell.other-month {
+      color: var(--text-muted);
+      opacity: 0.4;
+    }
+    .calendar-day-cell.selected {
+      background: var(--accent-violet);
+      color: #fff;
+    }
   </style>
 </head>
 <body>
@@ -1130,10 +1162,43 @@
     <main class="results-panel" role="main">
       <div class="results-header">
         <div class="results-count" id="resultsCount" aria-live="polite"></div>
-        <select class="sort-select" id="sortSelect" aria-label="Sort results">
-          <option value="relevance">Relevance</option>
-          <option value="recent">Most Recent</option>
-        </select>
+        <div style="display: flex; gap: 8px; align-items: center; position: relative;">
+          <!-- Date Filter Dropdown Wrapper -->
+          <div style="position: relative; display: inline-block;">
+            <button class="sort-select" id="dateFilterBtn" aria-haspopup="true" aria-expanded="false" style="display: inline-flex; align-items: center; gap: 6px;">📅 Any time</button>
+            <div class="dropdown-menu" id="dateFilterMenu" style="display: none; position: absolute; top: calc(100% + 6px); right: 0; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px; width: 260px; z-index: 100; box-shadow: var(--glow-violet), 0 10px 30px rgba(0,0,0,0.5); backdrop-filter: blur(16px);">
+              <div class="date-option active" data-range="all">Any time</div>
+              <div class="date-option" data-range="24h">Past 24 hours</div>
+              <div class="date-option" data-range="week">Past week</div>
+              <div class="date-option" data-range="month">Past month</div>
+              <div class="date-option" data-range="custom">Custom range...</div>
+              
+              <!-- Custom range panel -->
+              <div id="customRangePanel" style="display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); flex-direction: column; gap: 8px;">
+                <div class="config-field" style="margin-bottom: 8px; position: relative;">
+                  <label class="config-label">Start Date</label>
+                  <div style="position: relative;">
+                    <input type="text" id="startDateInput" class="config-input" placeholder="dd-mm-yyyy" style="padding-right: 30px;" readonly />
+                    <span class="calendar-icon" id="startCalIcon" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); cursor: pointer; font-size: 14px;">📅</span>
+                  </div>
+                </div>
+                <div class="config-field" style="margin-bottom: 8px; position: relative;">
+                  <label class="config-label">End Date</label>
+                  <div style="position: relative;">
+                    <input type="text" id="endDateInput" class="config-input" placeholder="dd-mm-yyyy" style="padding-right: 30px;" readonly />
+                    <span class="calendar-icon" id="endCalIcon" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); cursor: pointer; font-size: 14px;">📅</span>
+                  </div>
+                </div>
+                <button class="config-apply-btn" id="btnApplyCustomDate" style="margin-top: 4px; padding: 6px;">Apply Filter</button>
+              </div>
+            </div>
+          </div>
+
+          <select class="sort-select" id="sortSelect" aria-label="Sort results">
+            <option value="relevance">Relevance</option>
+            <option value="recent">Most Recent</option>
+          </select>
+        </div>
       </div>
       <div id="resultsContainer">
         <div class="state-message">
@@ -1310,6 +1375,9 @@
   let currentFilter = "all";
   const PAGE_SIZE   = 15;
   let configInitialized = false;
+  let currentStartDate = null;
+  let currentEndDate = null;
+  let currentDateRange = "all";
 
   // -----------------------------------------------------------------------
   // Toast notifications
@@ -1353,11 +1421,21 @@
 
     // Sync URL parameters for browser search engine compatibility
     const url = new URL(window.location.href);
-    if (url.searchParams.get("q") !== query || url.searchParams.get("tab") !== currentFilter) {
-      url.searchParams.set("q", query);
-      url.searchParams.set("tab", currentFilter);
-      window.history.pushState({}, "", url.toString());
+    let urlChanged = false;
+    if (url.searchParams.get("q") !== query) { url.searchParams.set("q", query); urlChanged = true; }
+    if (url.searchParams.get("tab") !== currentFilter) { url.searchParams.set("tab", currentFilter); urlChanged = true; }
+    if (currentStartDate !== null) {
+      if (url.searchParams.get("start_date") !== String(currentStartDate)) { url.searchParams.set("start_date", currentStartDate); urlChanged = true; }
+    } else {
+      if (url.searchParams.has("start_date")) { url.searchParams.delete("start_date"); urlChanged = true; }
     }
+    if (currentEndDate !== null) {
+      if (url.searchParams.get("end_date") !== String(currentEndDate)) { url.searchParams.set("end_date", currentEndDate); urlChanged = true; }
+    } else {
+      if (url.searchParams.has("end_date")) { url.searchParams.delete("end_date"); urlChanged = true; }
+    }
+    if (url.searchParams.get("date_range") !== currentDateRange) { url.searchParams.set("date_range", currentDateRange); urlChanged = true; }
+    if (urlChanged) { window.history.pushState({}, "", url.toString()); }
 
     const container = document.getElementById("resultsContainer");
     container.innerHTML = `<div class="state-message"><div class="icon">⏳</div><p>Searching…</p></div>`;
@@ -1370,6 +1448,9 @@
         limit:  PAGE_SIZE,
         offset: offset,
       });
+
+      if (currentStartDate !== null) params.append("start_date", currentStartDate);
+      if (currentEndDate !== null) params.append("end_date", currentEndDate);
 
       let endpoint = "/api/search";
       if (currentFilter === "private") {
@@ -2021,6 +2102,259 @@
   }
 
   // -----------------------------------------------------------------------
+  // Date Filter & Custom Calendar Picker
+  // -----------------------------------------------------------------------
+  function updateDateFilterButtonLabel() {
+    const btn = document.getElementById("dateFilterBtn");
+    if (currentDateRange === "all") {
+      btn.textContent = "📅 Any time";
+    } else if (currentDateRange === "24h") {
+      btn.textContent = "📅 Past 24h";
+    } else if (currentDateRange === "week") {
+      btn.textContent = "📅 Past week";
+    } else if (currentDateRange === "month") {
+      btn.textContent = "📅 Past month";
+    } else if (currentDateRange === "custom") {
+      if (currentStartDate && currentEndDate) {
+        const startStr = formatDateDDMMYYYY(new Date(currentStartDate * 1000));
+        const endStr = formatDateDDMMYYYY(new Date(currentEndDate * 1000));
+        btn.textContent = `📅 ${startStr} to ${endStr}`;
+      } else {
+        btn.textContent = "📅 Custom";
+      }
+    }
+  }
+
+  function parseDateDDMMYYYY(str) {
+    if (!str) return null;
+    const parts = str.split("-");
+    if (parts.length !== 3) return null;
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1; // 0-indexed month
+    const year = parseInt(parts[2], 10);
+    if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
+    const d = new Date(year, month, day, 0, 0, 0, 0);
+    if (d.getDate() !== day || d.getMonth() !== month || d.getFullYear() !== year) return null;
+    return d;
+  }
+
+  function formatDateDDMMYYYY(date) {
+    if (!date) return "";
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}-${month}-${year}`;
+  }
+
+  // Calendar picker state
+  let calCurrentDate = new Date();
+  let calActiveInput = null;
+
+  function openCalendar(inputEl) {
+    calActiveInput = inputEl;
+    const picker = document.getElementById("calendarPicker");
+    const val = inputEl.value;
+    const parsed = parseDateDDMMYYYY(val);
+    if (parsed) {
+      calCurrentDate = parsed;
+    } else {
+      calCurrentDate = new Date();
+    }
+    renderCalendar();
+    const rect = inputEl.getBoundingClientRect();
+    picker.style.top = `${window.scrollY + rect.bottom + 4}px`;
+    picker.style.left = `${window.scrollX + rect.left}px`;
+    picker.style.display = "block";
+  }
+
+  function closeCalendar() {
+    document.getElementById("calendarPicker").style.display = "none";
+    calActiveInput = null;
+  }
+
+  function renderCalendar() {
+    const year = calCurrentDate.getFullYear();
+    const month = calCurrentDate.getMonth();
+    const months = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+    document.getElementById("calendarTitle").textContent = `${months[month]} ${year}`;
+    const daysGrid = document.getElementById("calendarDaysGrid");
+    daysGrid.innerHTML = "";
+    const firstDay = new Date(year, month, 1);
+    const startDayOfWeek = firstDay.getDay(); // Sunday=0, Monday=1...
+    const totalDays = new Date(year, month + 1, 0).getDate();
+    const prevMonthTotalDays = new Date(year, month, 0).getDate();
+    const selectedDate = parseDateDDMMYYYY(calActiveInput ? calActiveInput.value : "");
+
+    // Render prev month padding
+    for (let i = startDayOfWeek - 1; i >= 0; i--) {
+      const dayNum = prevMonthTotalDays - i;
+      const cell = document.createElement("div");
+      cell.className = "calendar-day-cell other-month";
+      cell.textContent = dayNum;
+      daysGrid.appendChild(cell);
+    }
+
+    // Render current month days
+    for (let dayNum = 1; dayNum <= totalDays; dayNum++) {
+      const cell = document.createElement("div");
+      cell.className = "calendar-day-cell";
+      cell.textContent = dayNum;
+      if (selectedDate && 
+          selectedDate.getDate() === dayNum && 
+          selectedDate.getMonth() === month && 
+          selectedDate.getFullYear() === year) {
+        cell.classList.add("selected");
+      }
+      cell.addEventListener("click", () => {
+        if (calActiveInput) {
+          const d = new Date(year, month, dayNum);
+          calActiveInput.value = formatDateDDMMYYYY(d);
+          closeCalendar();
+        }
+      });
+      daysGrid.appendChild(cell);
+    }
+
+    // Render next month padding to make it a neat 6-row grid
+    const currentCells = startDayOfWeek + totalDays;
+    const remainingCells = 42 - currentCells;
+    for (let dayNum = 1; dayNum <= remainingCells; dayNum++) {
+      const cell = document.createElement("div");
+      cell.className = "calendar-day-cell other-month";
+      cell.textContent = dayNum;
+      daysGrid.appendChild(cell);
+    }
+  }
+
+  // Event handlers
+  document.getElementById("calPrevMonth").addEventListener("click", (e) => {
+    e.stopPropagation();
+    calCurrentDate.setMonth(calCurrentDate.getMonth() - 1);
+    renderCalendar();
+  });
+
+  document.getElementById("calNextMonth").addEventListener("click", (e) => {
+    e.stopPropagation();
+    calCurrentDate.setMonth(calCurrentDate.getMonth() + 1);
+    renderCalendar();
+  });
+
+  document.addEventListener("click", (e) => {
+    const menu = document.getElementById("dateFilterMenu");
+    const btn = document.getElementById("dateFilterBtn");
+    const picker = document.getElementById("calendarPicker");
+    if (picker.style.display !== "none") {
+      const clickInPicker = picker.contains(e.target);
+      const clickInInput = calActiveInput && calActiveInput.contains(e.target);
+      const clickInCalIcon = e.target.closest(".calendar-icon");
+      if (!clickInPicker && !clickInInput && !clickInCalIcon) {
+        closeCalendar();
+      }
+    }
+    if (menu.style.display !== "none") {
+      const clickInMenu = menu.contains(e.target);
+      const clickInBtn = btn.contains(e.target);
+      if (!clickInMenu && !clickInBtn && !picker.contains(e.target)) {
+        menu.style.display = "none";
+        btn.setAttribute("aria-expanded", "false");
+      }
+    }
+  });
+
+  document.getElementById("dateFilterBtn").addEventListener("click", (e) => {
+    const menu = document.getElementById("dateFilterMenu");
+    const isOpen = menu.style.display === "block";
+    menu.style.display = isOpen ? "none" : "block";
+    dateFilterBtn.setAttribute("aria-expanded", isOpen ? "false" : "true");
+    closeCalendar();
+  });
+
+  document.querySelectorAll(".date-option").forEach(opt => {
+    opt.addEventListener("click", () => {
+      document.querySelectorAll(".date-option").forEach(o => o.classList.remove("active"));
+      opt.classList.add("active");
+      const range = opt.dataset.range;
+      currentDateRange = range;
+      const customPanel = document.getElementById("customRangePanel");
+      if (range === "custom") {
+        customPanel.style.display = "flex";
+        const startInput = document.getElementById("startDateInput");
+        const endInput = document.getElementById("endDateInput");
+        if (!startInput.value) {
+          const sevenDaysAgo = new Date();
+          sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+          startInput.value = formatDateDDMMYYYY(sevenDaysAgo);
+        }
+        if (!endInput.value) {
+          endInput.value = formatDateDDMMYYYY(new Date());
+        }
+      } else {
+        customPanel.style.display = "none";
+        closeCalendar();
+        if (range === "all") {
+          currentStartDate = null;
+          currentEndDate = null;
+        } else if (range === "24h") {
+          currentStartDate = Math.floor(Date.now() / 1000) - 24 * 3600;
+          currentEndDate = null;
+        } else if (range === "week") {
+          currentStartDate = Math.floor(Date.now() / 1000) - 7 * 24 * 3600;
+          currentEndDate = null;
+        } else if (range === "month") {
+          currentStartDate = Math.floor(Date.now() / 1000) - 30 * 24 * 3600;
+          currentEndDate = null;
+        }
+        document.getElementById("dateFilterMenu").style.display = "none";
+        document.getElementById("dateFilterBtn").setAttribute("aria-expanded", "false");
+        updateDateFilterButtonLabel();
+        if (currentQuery) runSearch(currentQuery, 0);
+      }
+    });
+  });
+
+  document.getElementById("startDateInput").addEventListener("click", (e) => {
+    openCalendar(document.getElementById("startDateInput"));
+  });
+  document.getElementById("startCalIcon").addEventListener("click", (e) => {
+    e.stopPropagation();
+    openCalendar(document.getElementById("startDateInput"));
+  });
+  document.getElementById("endDateInput").addEventListener("click", (e) => {
+    openCalendar(document.getElementById("endDateInput"));
+  });
+  document.getElementById("endCalIcon").addEventListener("click", (e) => {
+    e.stopPropagation();
+    openCalendar(document.getElementById("endDateInput"));
+  });
+
+  document.getElementById("btnApplyCustomDate").addEventListener("click", () => {
+    const startStr = document.getElementById("startDateInput").value.trim();
+    const endStr = document.getElementById("endDateInput").value.trim();
+    const startD = parseDateDDMMYYYY(startStr);
+    const endD = parseDateDDMMYYYY(endStr);
+    if (!startD || !endD) {
+      showToast("Please enter valid dates in dd-mm-yyyy format", "error");
+      return;
+    }
+    startD.setHours(0, 0, 0, 0);
+    endD.setHours(23, 59, 59, 999);
+    if (startD > endD) {
+      showToast("Start date must be before or equal to end date", "error");
+      return;
+    }
+    currentStartDate = Math.floor(startD.getTime() / 1000);
+    currentEndDate = Math.floor(endD.getTime() / 1000);
+    document.getElementById("dateFilterMenu").style.display = "none";
+    document.getElementById("dateFilterBtn").setAttribute("aria-expanded", "false");
+    closeCalendar();
+    updateDateFilterButtonLabel();
+    if (currentQuery) runSearch(currentQuery, 0);
+  });
+
+  // -----------------------------------------------------------------------
   // Initialise + auto-refresh
   // -----------------------------------------------------------------------
   refreshStats();
@@ -2030,6 +2364,32 @@
   const urlParams = new URLSearchParams(window.location.search);
   const qParam = urlParams.get("q");
   const tabParam = urlParams.get("tab");
+  const startParam = urlParams.get("start_date");
+  const endParam = urlParams.get("end_date");
+  const rangeParam = urlParams.get("date_range");
+
+  if (startParam) currentStartDate = parseInt(startParam, 10);
+  if (endParam) currentEndDate = parseInt(endParam, 10);
+  if (rangeParam) {
+    currentDateRange = rangeParam;
+    document.querySelectorAll(".date-option").forEach(opt => {
+      opt.classList.remove("active");
+      if (opt.dataset.range === currentDateRange) {
+        opt.classList.add("active");
+      }
+    });
+    if (currentDateRange === "custom") {
+      document.getElementById("customRangePanel").style.display = "flex";
+      if (currentStartDate) {
+        document.getElementById("startDateInput").value = formatDateDDMMYYYY(new Date(currentStartDate * 1000));
+      }
+      if (currentEndDate) {
+        document.getElementById("endDateInput").value = formatDateDDMMYYYY(new Date(currentEndDate * 1000));
+      }
+    }
+  }
+  updateDateFilterButtonLabel();
+
   if (qParam) {
     searchInput.value = qParam;
     if (tabParam) {
@@ -2052,6 +2412,25 @@
     runSearch(qParam.trim(), 0);
   }
 </script>
+
+<!-- Custom Calendar Picker Widget -->
+<div id="calendarPicker" class="calendar-picker" style="display: none; position: absolute; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px; width: 230px; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.6); backdrop-filter: blur(12px);">
+  <div class="calendar-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+    <button type="button" class="calendar-nav-btn" id="calPrevMonth" style="background: transparent; border: none; color: var(--text-primary); cursor: pointer; padding: 2px 6px; font-weight: bold;">&lt;</button>
+    <span id="calendarTitle" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">June 2026</span>
+    <button type="button" class="calendar-nav-btn" id="calNextMonth" style="background: transparent; border: none; color: var(--text-primary); cursor: pointer; padding: 2px 6px; font-weight: bold;">&gt;</button>
+  </div>
+  <div class="calendar-weekdays" style="display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-size: 10px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px;">
+    <div>Sun</div>
+    <div>Mon</div>
+    <div>Tue</div>
+    <div>Wed</div>
+    <div>Thu</div>
+    <div>Fri</div>
+    <div>Sat</div>
+  </div>
+  <div class="calendar-days" id="calendarDaysGrid" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; font-size: 11px;"></div>
+</div>
 
 </body>
 </html>
