@@ -227,6 +227,14 @@ CREATE TABLE IF NOT EXISTS managed_domains (
 
 CREATE INDEX IF NOT EXISTS idx_managed_domains_priority
     ON managed_domains (priority DESC, domain);
+
+-- -----------------------------------------------------------------------
+-- System Settings — persistent configuration values
+-- -----------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS system_settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 
@@ -582,5 +590,24 @@ def mark_domain_crawled(conn: sqlite3.Connection, domain: str) -> None:
         ON CONFLICT(domain) DO UPDATE SET last_crawled = excluded.last_crawled
         """,
         (domain, int(_time.time()), int(_time.time())),
+    )
+
+
+def get_system_setting(conn: sqlite3.Connection, key: str, default: str) -> str:
+    """Returns a system setting value, or default if it does not exist."""
+    row = conn.execute("SELECT value FROM system_settings WHERE key = ?", (key,)).fetchone()
+    if row is not None:
+        return row["value"]
+    return default
+
+
+def set_system_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
+    """Saves or updates a system setting value."""
+    conn.execute(
+        """
+        INSERT INTO system_settings (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        """,
+        (key, str(value)),
     )
 

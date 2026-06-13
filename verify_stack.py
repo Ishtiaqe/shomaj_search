@@ -364,6 +364,39 @@ def test_crawler_config() -> None:
     })
 
 
+def test_config_persistence() -> None:
+    """POST /api/crawl/config should write values to system_settings table in SQLite."""
+    # 1. Update config via API
+    code, body = http_post("/api/crawl/config", {
+        "delay_seconds": 4.2,
+        "max_depth": 7,
+        "respect_robots_txt": False
+    })
+    _record("POST /api/crawl/config returns 200 (persistence test)", code == 200)
+
+    # 2. Query DB directly to check if they are saved
+    import sqlite3
+    from database import DB_PATH
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    
+    row_delay = conn.execute("SELECT value FROM system_settings WHERE key = 'delay_seconds'").fetchone()
+    row_depth = conn.execute("SELECT value FROM system_settings WHERE key = 'max_depth'").fetchone()
+    row_robots = conn.execute("SELECT value FROM system_settings WHERE key = 'respect_robots_txt'").fetchone()
+    conn.close()
+
+    _record("delay_seconds written to database as '4.2'", row_delay is not None and row_delay["value"] == "4.2")
+    _record("max_depth written to database as '7'", row_depth is not None and row_depth["value"] == "7")
+    _record("respect_robots_txt written to database as 'False'", row_robots is not None and row_robots["value"] == "False")
+
+    # Restore defaults
+    http_post("/api/crawl/config", {
+        "delay_seconds": 1.5,
+        "max_depth": 3,
+        "respect_robots_txt": True
+    })
+
+
 def test_seed_endpoint() -> None:
     """POST /api/crawl/seed should add valid URLs and reject blocked ones."""
     # Use unique timestamped URLs so they are always fresh even on re-runs
@@ -599,6 +632,7 @@ def main() -> int:
         ("19. Product Search API",       test_products_indexing_and_search),
         ("20. Caching & Invalidation",    test_search_cache_invalidation),
         ("21. Safe Search Filtering",     test_safe_search_filtering),
+        ("22. Configuration Persistence", test_config_persistence),
     ]
 
     for group_name, fn in tests:

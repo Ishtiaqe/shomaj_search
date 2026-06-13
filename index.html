@@ -332,6 +332,33 @@
       box-shadow: 0 8px 32px rgba(108,99,255,0.12);
     }
 
+    /* Result card with image layout */
+    .result-card.has-image {
+      display: flex;
+      flex-direction: row-reverse;
+      justify-content: space-between;
+      gap: 20px;
+    }
+    .result-card .result-content {
+      flex: 1;
+      min-width: 0;
+    }
+    .result-card .result-image-wrapper {
+      flex-shrink: 0;
+      width: 100px;
+      height: 100px;
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: rgba(0,0,0,0.2);
+    }
+    .result-card .result-image-wrapper img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+
     @keyframes fadeInUp {
       from { opacity: 0; transform: translateY(12px); }
       to   { opacity: 1; transform: translateY(0); }
@@ -1374,20 +1401,27 @@
       } else {
         // Standard Web search layout
         container.innerHTML = filtered.map((r, i) => `
-          <article class="result-card" style="animation-delay:${i * 0.05}s" aria-label="Search result">
-            <div class="result-badge-row">
-              <span class="badge ${r.is_private ? 'badge-private' : 'badge-public'}">
-                ${r.is_private ? '🔒 Private' : '🌐 Web'}
-              </span>
-              <span class="result-domain">${escapeHtml(r.domain)}</span>
-            </div>
-            <a class="result-title" href="${escapeHtml(r.url)}" target="_blank" rel="noopener" title="${escapeHtml(r.title)}">
-              ${escapeHtml(r.title || r.url)}
-            </a>
-            <div class="result-snippet">${r.snippet || ""}</div>
-            <div class="result-meta">
-              <span class="result-score">Score: ${r.score.toFixed(3)}</span>
-              <span class="result-time">${r.last_scanned ? formatTime(r.last_scanned) : ""}</span>
+          <article class="result-card ${r.image_url ? 'has-image' : ''}" style="animation-delay:${i * 0.05}s" aria-label="Search result">
+            ${r.image_url ? `
+              <div class="result-image-wrapper">
+                <img src="${escapeHtml(r.image_url)}" alt="Thumbnail" onerror="this.parentElement.style.display='none'">
+              </div>
+            ` : ''}
+            <div class="result-content">
+              <div class="result-badge-row">
+                <span class="badge ${r.is_private ? 'badge-private' : 'badge-public'}">
+                  ${r.is_private ? '🔒 Private' : '🌐 Web'}
+                </span>
+                <span class="result-domain">${escapeHtml(r.domain)}</span>
+              </div>
+              <a class="result-title" href="${escapeHtml(r.url)}" target="_blank" rel="noopener" title="${escapeHtml(r.title)}">
+                ${escapeHtml(r.title || r.url)}
+              </a>
+              <div class="result-snippet">${r.snippet || ""}</div>
+              <div class="result-meta">
+                <span class="result-score">Score: ${r.score.toFixed(3)}</span>
+                <span class="result-time">${r.last_scanned ? formatTime(r.last_scanned) : ""}</span>
+              </div>
             </div>
           </article>
         `).join("");
@@ -1698,27 +1732,23 @@
   // Search input events
   // -----------------------------------------------------------------------
   const searchInput = document.getElementById("searchInput");
-  let debounceTimer;
 
   searchInput.addEventListener("input", () => {
-    clearTimeout(debounceTimer);
     const q = searchInput.value.trim();
-    if (q.length < 2) {
+    if (!q) {
       document.getElementById("resultsCount").textContent = "";
-      return;
+      document.getElementById("resultsContainer").innerHTML = "";
+      document.getElementById("pagination").hidden = true;
     }
-    debounceTimer = setTimeout(() => runSearch(q, 0), 350);
   });
 
   searchInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
-      clearTimeout(debounceTimer);
       runSearch(searchInput.value.trim(), 0);
     }
   });
 
   document.getElementById("searchBtn").addEventListener("click", () => {
-    clearTimeout(debounceTimer);
     runSearch(searchInput.value.trim(), 0);
   });
 
@@ -1775,7 +1805,12 @@
     if (diff <  60)   return `${diff}s ago`;
     if (diff < 3600)  return `${Math.floor(diff/60)}m ago`;
     if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
-    return d.toLocaleDateString();
+    
+    // dd-mm-yyyy date format
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}-${month}-${year}`;
   }
 
   function formatUptime(seconds) {
@@ -1796,9 +1831,14 @@
       return `৳ ${val.toLocaleString('en-BD')}`;
     }
     if (currency === "USD") {
-      return `$${val.toLocaleString('en-US')}`;
+      const bdtVal = val * 120;
+      return `৳ ${bdtVal.toLocaleString('en-BD')} (approx. $${val.toLocaleString('en-US')})`;
     }
-    return `${currency} ${val.toLocaleString()}`;
+    if (currency === "EUR") {
+      const bdtVal = val * 130;
+      return `৳ ${bdtVal.toLocaleString('en-BD')} (approx. €${val.toLocaleString('en-US')})`;
+    }
+    return `৳ ${(val * 120).toLocaleString('en-BD')} (${currency} ${val.toLocaleString()})`;
   }
 
   // -----------------------------------------------------------------------

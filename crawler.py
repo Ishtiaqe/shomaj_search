@@ -39,8 +39,11 @@ from database import (
     upsert_managed_domain,
     get_domain_config,
     upsert_media,
+    get_system_setting,
+    set_system_setting,
 )
 from product_extractor import ProductExtractor
+from media_utils import process_media_thumbnail_bg
 
 logger = logging.getLogger("shomaj.crawler")
 
@@ -156,6 +159,32 @@ class CrawlerConfig:
             "respect_robots_txt":  self.respect_robots_txt,
         }
 
+    def load_from_db(self, conn) -> None:
+        """Loads configuration from sqlite system_settings table."""
+        self.delay_seconds = float(get_system_setting(conn, "delay_seconds", str(self.delay_seconds)))
+        self.max_depth = int(get_system_setting(conn, "max_depth", str(self.max_depth)))
+        self.request_timeout = float(get_system_setting(conn, "request_timeout", str(self.request_timeout)))
+        self.max_content_mb = float(get_system_setting(conn, "max_content_mb", str(self.max_content_mb)))
+        self.concurrent_workers = int(get_system_setting(conn, "concurrent_workers", str(self.concurrent_workers)))
+        self.follow_sitemaps = get_system_setting(conn, "follow_sitemaps", str(self.follow_sitemaps)) == "True"
+        self.extract_products = get_system_setting(conn, "extract_products", str(self.extract_products)) == "True"
+        self.max_pages_per_domain = int(get_system_setting(conn, "max_pages_per_domain", str(self.max_pages_per_domain)))
+        self.retry_failed = get_system_setting(conn, "retry_failed", str(self.retry_failed)) == "True"
+        self.respect_robots_txt = get_system_setting(conn, "respect_robots_txt", str(self.respect_robots_txt)) == "True"
+
+    def save_to_db(self, conn) -> None:
+        """Saves current configuration to sqlite system_settings table."""
+        set_system_setting(conn, "delay_seconds", str(self.delay_seconds))
+        set_system_setting(conn, "max_depth", str(self.max_depth))
+        set_system_setting(conn, "request_timeout", str(self.request_timeout))
+        set_system_setting(conn, "max_content_mb", str(self.max_content_mb))
+        set_system_setting(conn, "concurrent_workers", str(self.concurrent_workers))
+        set_system_setting(conn, "follow_sitemaps", str(self.follow_sitemaps))
+        set_system_setting(conn, "extract_products", str(self.extract_products))
+        set_system_setting(conn, "max_pages_per_domain", str(self.max_pages_per_domain))
+        set_system_setting(conn, "retry_failed", str(self.retry_failed))
+        set_system_setting(conn, "respect_robots_txt", str(self.respect_robots_txt))
+
 
 # ---------------------------------------------------------------------------
 # Singleton Crawler Engine
@@ -193,6 +222,25 @@ class CrawlerEngine:
 
         # Cache of parsed robots.txt rules per domain
         self._robots_txt_parsers: dict[str, Optional[RobotFileParser]] = {}
+
+    def load_config(self) -> None:
+        """Loads configuration from the database system_settings table."""
+        try:
+            conn = get_db()
+            self.config.load_from_db(conn)
+            logger.info("[Crawler] Configuration loaded from database.")
+        except Exception as e:
+            logger.debug("[Crawler] Failed to load config from DB: %s", e)
+
+    def save_config(self) -> None:
+        """Saves configuration to the database system_settings table."""
+        try:
+            conn = get_db()
+            self.config.save_to_db(conn)
+            conn.commit()
+            logger.info("[Crawler] Configuration saved to database.")
+        except Exception as e:
+            logger.warning("[Crawler] Failed to save config to DB: %s", e)
 
     # ------------------------------------------------------------------
     # State transitions
@@ -730,6 +778,7 @@ class CrawlerEngine:
                     fmt=ext,
                     is_private=is_private_page,
                 )
+                asyncio.create_task(process_media_thumbnail_bg(abs_img_url, abs_img_url))
                 images_found += 1
                 if images_found >= 100:
                     break
@@ -772,6 +821,7 @@ class CrawlerEngine:
                         fmt=ext,
                         is_private=is_private_page,
                     )
+                    asyncio.create_task(process_media_thumbnail_bg(abs_vid_url, thumbnail))
                     videos_found += 1
                     if videos_found >= 10:
                         break

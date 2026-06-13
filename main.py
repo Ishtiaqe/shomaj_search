@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from typing import Any, Optional
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -24,6 +24,8 @@ from database import (
     upsert_managed_domain, get_domain_config, get_all_domains,
 )
 from cache import search_cache
+from media_utils import process_media_thumbnail_bg
+
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -42,6 +44,7 @@ logger = logging.getLogger("shomaj.api")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    engine.load_config()  # Load configuration from database
     logger.info("[API] Shomaj Search backend is ready.")
     yield
     logger.info("[API] Shutting down.")
@@ -71,6 +74,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve static files (thumbnails)
+import os
+os.makedirs("static/thumbnails", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +199,7 @@ async def crawl_config(payload: CrawlConfigPayload):
     """
     engine.config.update(**payload.model_dump(exclude_none=True))
     await engine.adjust_workers()
+    engine.save_config()  # Persist crawler config to DB!
     return ok(engine.config.to_dict())
 
 
@@ -231,7 +240,7 @@ async def crawl_seed(payload: SeedPayload):
 # ---------------------------------------------------------------------------
 
 @app.post("/api/index", tags=["Indexing"])
-async def index_page(payload: IndexPayload):
+async def index_page(payload: IndexPayload, background_tasks: BackgroundTasks):
     """
     Accepts page data from the browser extension.
 
@@ -300,6 +309,7 @@ async def index_page(payload: IndexPayload):
                 fmt=ext,
                 is_private=1,
             )
+            background_tasks.add_task(process_media_thumbnail_bg, img_url, img_url)
             images_saved += 1
 
         # Persist video metadata
@@ -323,6 +333,7 @@ async def index_page(payload: IndexPayload):
                 fmt=ext,
                 is_private=1,
             )
+            background_tasks.add_task(process_media_thumbnail_bg, vid_url, str(vid.get("thumbnail_url", "")))
             videos_saved += 1
 
         conn.commit()
@@ -401,10 +412,11 @@ async def search(
                 s.url,
                 s.title,
                 snippet(search_index, 2, '<mark>', '</mark>', '\u2026', 40) AS snippet,
-                bm25(search_index)                                           AS score,
+                bm25(search_index, 10.0, 1.0)                               AS score,
                 m.domain,
                 m.is_private,
-                m.last_scanned
+                m.last_scanned,
+                (SELECT thumbnail_url FROM media_index WHERE page_url = s.url AND media_type = 'image' LIMIT 1) AS image_url
             FROM search_index s
             JOIN crawl_metadata m ON m.url = s.url
             WHERE search_index MATCH ?
@@ -425,6 +437,7 @@ async def search(
                 "domain":       row["domain"],
                 "is_private":   bool(row["is_private"]),
                 "last_scanned": row["last_scanned"],
+                "image_url":    row["image_url"],
             }
             for row in rows
         ]
@@ -521,7 +534,7 @@ async def search_images(
             JOIN media_index m ON m.media_url = f.media_url
             WHERE f MATCH ? AND m.media_type = 'image'
             {extra_where}
-            ORDER BY rank
+            ORDER BY bm25(media_fts, 10.0, 2.0, 2.0, 5.0) ASC
             LIMIT ? OFFSET ?
             """,
             params + [limit, offset],
@@ -623,7 +636,7 @@ async def search_videos(
             JOIN media_index m ON m.media_url = f.media_url
             WHERE f MATCH ? AND m.media_type = 'video'
             {extra_where}
-            ORDER BY rank
+            ORDER BY bm25(media_fts, 10.0, 2.0, 2.0, 5.0) ASC
             LIMIT ? OFFSET ?
             """,
             params,
@@ -861,7 +874,7 @@ async def search_products(
                 p.url, p.name, p.description, p.brand, p.sku, p.price,
                 p.price_text, p.currency, p.availability, p.image_url,
                 p.domain, p.is_private, p.schema_type, p.extracted_at,
-                bm25(product_fts) AS score
+                bm25(product_fts, 10.0, 2.0, 1.0) AS score
             FROM product_fts f
             JOIN product_index p ON p.url = f.url
             WHERE product_fts MATCH ?

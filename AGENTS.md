@@ -59,6 +59,18 @@
 - Updated `index.html` with configuration elements and bindings to control `respect_robots_txt` in the browser dashboard.
 - Extended the integration test suite in `verify_stack.py` to cover robots.txt config updating, caching invalidation on writes, and Safe Search filtering (all 74/74 assertions passing).
 
+**Session 4 — 2026-06-14 (Persistent Config + AVIF Thumbnails + Localisation + UX)**
+**Agent:** Antigravity (Gemini 3.5 Flash High)
+
+**Accomplished:**
+- Implemented persistent settings database schema in `database.py` (`system_settings` table) and loaded/saved crawler configs to/from SQLite.
+- Integrated background task processing in `main.py` (`BackgroundTasks`) to scale, compress, and save crawled and extension-ingested images/videos as local AVIF thumbnails.
+- Mounted `/static` directory in FastAPI to serve the generated AVIF thumbnails.
+- Refactored `index.html` to disable the "search-as-you-type" behaviour, performing queries only on Enter or search button click.
+- Formatted dates to Bangladeshi local standard (`dd-mm-yyyy`) and currency values to Bangladeshi Taka (৳/BDT), including USD/EUR conversion rates.
+- Enabled image thumbnails in web search cards, rendering them with a premium flexbox layout.
+- Added and registered a new configuration persistence test `test_config_persistence` in `verify_stack.py` (now 78/78 assertions passing).
+
 ---
 
 ## 📁 File Inventory
@@ -70,8 +82,10 @@
 | `crawler.py` | ✅ Complete | 4-state async engine, blocklist, rate limiting, BS4 extraction, robots.txt compliance |
 | `main.py` | ✅ Complete | FastAPI, 10+ routes, search, index, crawler control, media search, caching, Safe Search |
 | `index.html` | ✅ Complete | Glassmorphism dashboard, search history, filter tabs, image/video search, robots.txt toggle |
-| `verify_stack.py` | ✅ Complete | 74 assertions, all passing |
-| `requirements.txt` | ✅ Complete | fastapi, uvicorn, httpx, beautifulsoup4, python-multipart |
+| `verify_stack.py` | ✅ Complete | 78 assertions, all passing |
+| `media_utils.py` | ✅ Complete | Downscaling, YouTube extraction and AVIF compression utilities |
+| `product_extractor.py` | ✅ Complete | E-commerce schema extraction (JSON-LD, OpenGraph, Microdata) |
+| `requirements.txt` | ✅ Complete | fastapi, uvicorn, httpx, beautifulsoup4, python-multipart, pillow, pillow-avif-plugin |
 | `README.md` | ✅ Complete | Full docs |
 | `AGENTS.md` | ✅ Complete | This file |
 | `extension/manifest.json` | ✅ Complete | MV3, Chrome/Brave/Firefox |
