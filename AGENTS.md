@@ -93,6 +93,15 @@
 - Fixed a parameter alignment bug in `/api/search/videos` where `fts_query` was missing from `select_params`, breaking video queries.
 - Extended integration test suite with `test_date_range_filtering` testing Web, Images, Videos, and Products date filtering (now 89/89 assertions passing).
 
+**Session 7 — 2026-06-14 (Click Tracking & Search Trends UI & FTS Rank Boost)**
+**Agent:** Antigravity (Gemini 3.5 Flash High)
+
+**Accomplished:**
+- Implemented frontend click-tracking logger `reportClick(url, query)` which intercepts clicks on search results (`.clickable-result`) and sends them via `navigator.sendBeacon` (or `fetch` fallback with `keepalive`) to `/api/click`.
+- Replaced the static home/welcome empty page state with `showWelcomeOrTrends()` which dynamically fetches the top trending queries and top visited URLs from `/api/trends?days=7&limit=6` and renders them with beautiful hover states and animations.
+- Wired trends and searches so that clicking trending search tags triggers instant query searching, and popular page links automatically record clicks.
+- Updated `verify_stack.py` to include `test_click_popularity_ranking_and_trends` to verify click recording, cache invalidation, trend retrieval, and BM25 rank boosting (now 106/106 assertions passing).
+
 ---
 
 ## 📁 File Inventory
@@ -104,7 +113,7 @@
 | `crawler.py` | ✅ Complete | 4-state async engine, blocklist, rate limiting, BS4 extraction, robots.txt compliance |
 | `main.py` | ✅ Complete | FastAPI, 11+ routes, search, feedback, crawler control, media search, caching, Safe Search |
 | `index.html` | ✅ Complete | Glassmorphism dashboard, search history, tabs, feedback buttons, robots.txt toggle |
-| `verify_stack.py` | ✅ Complete | 80 assertions, all passing |
+| `verify_stack.py` | ✅ Complete | 106 assertions, all passing |
 | `media_utils.py` | ✅ Complete | Downscaling, YouTube extraction and AVIF compression utilities |
 | `product_extractor.py` | ✅ Complete | E-commerce schema extraction (JSON-LD, OpenGraph, Microdata) |
 | `requirements.txt` | ✅ Complete | fastapi, uvicorn, httpx, beautifulsoup4, python-multipart, pillow, pillow-avif-plugin |
@@ -302,6 +311,7 @@ CREATE TABLE result_feedback (
 - [x] `robots.txt` compliance (checking disallowed directories, cached asynchronously)
 - [x] Sitemap.xml discovery (seed crawl queue from robots.txt and sitemap files)
 - [x] Date range filter (Any time, 24h, past week, past month, custom calendar picker starting on Sunday)
+- [x] Click popularity tracking & trending searches welcome view
 
 ---
 
@@ -385,4 +395,4 @@ gh repo view Ishtiaqe/shomaj_search
 
 ---
 
-*Last updated: 2026-06-14 by Antigravity agent (Session 6)*
+*Last updated: 2026-06-14 by Antigravity agent (Session 7)*

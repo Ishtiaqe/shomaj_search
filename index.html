@@ -1083,6 +1083,26 @@
       background: var(--accent-violet);
       color: #fff;
     }
+
+    /* Trends & Popularity Styles */
+    .trend-tag {
+      transform: translateY(0);
+      transition: transform var(--transition), border-color var(--transition), background-color var(--transition) !important;
+    }
+    .trend-tag:hover {
+      border-color: var(--accent-violet) !important;
+      background: rgba(108, 99, 255, 0.12) !important;
+      transform: translateY(-2px);
+    }
+    .trend-url-card {
+      transform: translateY(0);
+      transition: transform var(--transition), border-color var(--transition), box-shadow var(--transition) !important;
+    }
+    .trend-url-card:hover {
+      border-color: rgba(108, 99, 255, 0.4) !important;
+      box-shadow: var(--glow-violet);
+      transform: translateY(-2px);
+    }
   </style>
 </head>
 <body>
@@ -1494,7 +1514,7 @@
       // Render based on current filter type
       if (currentFilter === "images") {
         container.innerHTML = `<div class="image-grid">` + filtered.map((r, i) => `
-          <div class="image-card" style="animation-delay:${i * 0.03}s" onclick="window.open('${escapeHtml(r.page_url)}', '_blank')">
+          <div class="image-card clickable-result" data-url="${escapeHtml(r.page_url)}" style="animation-delay:${i * 0.03}s" onclick="window.open('${escapeHtml(r.page_url)}', '_blank')">
             <div class="image-wrapper">
               <img src="${escapeHtml(r.thumbnail_url || r.media_url)}" alt="${escapeHtml(r.title)}" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><rect width=%22100%22 height=%22100%22 fill=%22%23222%22/><text x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23666%22 font-size=%2212%22>No Image</text></svg>'">
             </div>
@@ -1518,13 +1538,13 @@
       } else if (currentFilter === "videos") {
         container.innerHTML = `<div class="video-grid">` + filtered.map((r, i) => `
           <div class="video-card" style="animation-delay:${i * 0.03}s">
-            <div class="video-thumbnail-wrapper" onclick="window.open('${escapeHtml(r.media_url)}', '_blank')">
+            <div class="video-thumbnail-wrapper clickable-result" data-url="${escapeHtml(r.media_url)}" onclick="window.open('${escapeHtml(r.media_url)}', '_blank')">
               <img src="${escapeHtml(r.thumbnail_url)}" alt="${escapeHtml(r.title)}" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><rect width=%22100%22 height=%22100%22 fill=%22%23222%22/><text x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23666%22 font-size=%2212%22>Video</text></svg>'">
               ${r.duration_seconds ? `<span class="video-duration">${formatDuration(r.duration_seconds)}</span>` : ''}
               <div class="video-play-btn">▶</div>
             </div>
             <div class="video-card-info">
-              <a class="video-card-title" href="${escapeHtml(r.page_url)}" target="_blank" rel="noopener" title="${escapeHtml(r.title)}">
+              <a class="video-card-title clickable-result" data-url="${escapeHtml(r.page_url)}" href="${escapeHtml(r.page_url)}" target="_blank" rel="noopener" title="${escapeHtml(r.title)}">
                 ${escapeHtml(r.title || 'Untitled Video')}
               </a>
               <div class="video-card-meta">
@@ -1550,7 +1570,7 @@
             </div>
             <div class="product-details">
               ${r.brand ? `<div class="product-brand">${escapeHtml(r.brand)}</div>` : ''}
-              <a class="product-name" href="${escapeHtml(r.url)}" target="_blank" rel="noopener" title="${escapeHtml(r.name)}">
+              <a class="product-name clickable-result" data-url="${escapeHtml(r.url)}" href="${escapeHtml(r.url)}" target="_blank" rel="noopener" title="${escapeHtml(r.name)}">
                 ${escapeHtml(r.name)}
               </a>
               <div class="product-price-row">
@@ -1597,7 +1617,7 @@
                 </span>
                 <span class="result-domain">${escapeHtml(r.domain)}</span>
               </div>
-              <a class="result-title" href="${escapeHtml(r.url)}" target="_blank" rel="noopener" title="${escapeHtml(r.title)}">
+              <a class="result-title clickable-result" data-url="${escapeHtml(r.url)}" href="${escapeHtml(r.url)}" target="_blank" rel="noopener" title="${escapeHtml(r.title)}">
                 ${escapeHtml(r.title || r.url)}
               </a>
               <div class="result-snippet">${r.snippet || ""}</div>
@@ -1927,9 +1947,7 @@
   searchInput.addEventListener("input", () => {
     const q = searchInput.value.trim();
     if (!q) {
-      document.getElementById("resultsCount").textContent = "";
-      document.getElementById("resultsContainer").innerHTML = "";
-      document.getElementById("pagination").hidden = true;
+      showWelcomeOrTrends();
     }
   });
 
@@ -2032,8 +2050,120 @@
     }
   }
 
-  // Delegated feedback button click listener
+  // Click reporting helper (using sendBeacon or fallback keepalive fetch)
+  function reportClick(url, query) {
+    if (!url) return;
+    const cleanQuery = query ? query.trim() : "";
+    const payload = JSON.stringify({ url, query: cleanQuery });
+
+    if (navigator.sendBeacon) {
+      const blob = new Blob([payload], { type: "application/json" });
+      navigator.sendBeacon(`${API}/api/click`, blob);
+    } else {
+      fetch(`${API}/api/click`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: payload,
+        keepalive: true
+      }).catch(err => console.error("Error reporting click:", err));
+    }
+  }
+
+  // Bind searchTrending to window so it is accessible from inline onclick handler
+  window.searchTrending = function(query) {
+    searchInput.value = query;
+    runSearch(query, 0);
+  };
+
+  // Renders the trending searches and popular pages empty/welcome state
+  async function showWelcomeOrTrends() {
+    const container = document.getElementById("resultsContainer");
+    document.getElementById("resultsCount").textContent = "";
+    document.getElementById("pagination").hidden = true;
+
+    // Default welcome HTML in case API fails or has no data
+    const defaultWelcomeHTML = `
+      <div class="state-message">
+        <div class="icon">🧠</div>
+        <p>Start typing to search your indexed knowledge base.<br />
+           The more you browse, the smarter Shomaj gets.</p>
+      </div>`;
+
+    container.innerHTML = defaultWelcomeHTML;
+
+    try {
+      const res = await fetch(`${API}/api/trends?days=7&limit=6`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const { queries, urls } = data.data;
+
+      if (!queries.length && !urls.length) {
+        return;
+      }
+
+      let html = `<div class="trends-container" style="padding: 20px; display: flex; flex-direction: column; gap: 24px; max-width: 800px; margin: 0 auto;">`;
+
+      if (queries.length > 0) {
+        html += `
+          <div class="trends-section">
+            <h3 style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-muted); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+              ⚡ Trending Searches
+            </h3>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+              ${queries.map(q => `
+                <button class="trend-tag" onclick="searchTrending('${escapeHtml(q.query)}')" style="padding: 6px 14px; border-radius: 50px; border: 1px solid var(--border); background: var(--bg-glass); color: var(--text-primary); font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; backdrop-filter: blur(8px);">
+                  <span>${escapeHtml(q.query)}</span>
+                  <span style="font-size: 10px; color: var(--accent-teal); background: rgba(62,207,207,0.1); padding: 1px 6px; border-radius: 10px;">🔥 ${q.clicks}</span>
+                </button>
+              `).join("")}
+            </div>
+          </div>
+        `;
+      }
+
+      if (urls.length > 0) {
+        html += `
+          <div class="trends-section">
+            <h3 style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-muted); margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+              🔥 Popular Pages
+            </h3>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+              ${urls.map(u => {
+                let domain = "";
+                try {
+                  domain = new URL(u.url).hostname;
+                } catch(e) {
+                  domain = u.url;
+                }
+                return `
+                <div class="trend-url-card" style="padding: 14px; background: var(--bg-glass); border: 1px solid var(--border); border-radius: var(--radius-md); backdrop-filter: blur(8px); display: flex; justify-content: space-between; align-items: center; gap: 16px;">
+                  <div style="flex: 1; min-width: 0;">
+                    <a class="trend-link clickable-result" data-url="${escapeHtml(u.url)}" href="${escapeHtml(u.url)}" target="_blank" rel="noopener" style="font-size: 14px; font-weight: 600; color: var(--accent-violet); text-decoration: none; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: var(--transition);" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">
+                      ${escapeHtml(u.title || u.url)}
+                    </a>
+                    <span style="font-size: 11px; color: var(--text-muted); display: block; margin-top: 4px;">${escapeHtml(domain)}</span>
+                  </div>
+                  <div style="font-size: 12px; color: var(--text-muted); white-space: nowrap; background: rgba(255,255,255,0.05); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);">
+                    📈 ${u.clicks} ${u.clicks === 1 ? 'visit' : 'visits'}
+                  </div>
+                </div>
+              `}).join("")}
+            </div>
+          </div>
+        `;
+      }
+
+      html += `</div>`;
+      container.innerHTML = html;
+    } catch (err) {
+      console.error("Error loading trends:", err);
+      // Fallback already rendered in innerHTML
+    }
+  }
+
+  // Delegated click listener for feedback buttons & result clicks tracking
   document.getElementById("resultsContainer").addEventListener("click", (e) => {
+    // 1. Feedback button logic
     const btn = e.target.closest(".feedback-btn");
     if (btn) {
       e.preventDefault();
@@ -2043,6 +2173,16 @@
       const type = btn.dataset.type;
       const vote = parseInt(btn.dataset.vote);
       submitFeedback(url, query, type, vote);
+      return;
+    }
+
+    // 2. Clickable results logic (URLs)
+    const clickable = e.target.closest(".clickable-result");
+    if (clickable) {
+      const url = clickable.dataset.url || clickable.getAttribute("href");
+      if (url) {
+        reportClick(url, currentQuery || "");
+      }
     }
   });
 
@@ -2410,6 +2550,8 @@
       });
     }
     runSearch(qParam.trim(), 0);
+  } else {
+    showWelcomeOrTrends();
   }
 </script>
 

@@ -712,6 +712,89 @@ def test_date_range_filtering() -> None:
     conn.close()
 
 
+def test_click_popularity_ranking_and_trends() -> None:
+    """POST /api/click should log clicks, adjust rankings, and show in /api/trends."""
+    import time
+    ts = int(time.time())
+    
+    url_a = f"https://example.com/click-test-a-{ts}"
+    url_b = f"https://example.com/click-test-b-{ts}"
+    
+    # 1. Ingest both docs
+    payload_a = {
+        "url": url_a,
+        "title": "Click Test Doc A",
+        "text": "This is clicktestquery text content doc a.",
+        "links": [],
+        "images": [],
+        "videos": []
+    }
+    payload_b = {
+        "url": url_b,
+        "title": "Click Test Doc B",
+        "text": "This is clicktestquery text content doc b.",
+        "links": [],
+        "images": [],
+        "videos": []
+    }
+    
+    code_a, _ = http_post("/api/index", payload_a)
+    code_b, _ = http_post("/api/index", payload_b)
+    _record("Ingest Click Doc A returns 200", code_a == 200)
+    _record("Ingest Click Doc B returns 200", code_b == 200)
+    
+    # 2. Get baseline search positions (both should have equal clicks=0)
+    code_s1, body_s1 = http_get("/api/search?q=clicktestquery")
+    _record("Baseline search returns 200", code_s1 == 200)
+    results_s1 = body_s1.get("data", {}).get("results", [])
+    _record("Baseline search has 2 matches", len(results_s1) == 2)
+    
+    # 3. Register clicks: 3 on Doc B, 1 on Doc A for query 'clicktestquery'
+    for _ in range(3):
+        code_c, _ = http_post("/api/click", {"url": url_b, "query": "clicktestquery"})
+        _record("Register click on Doc B returns 200", code_c == 200)
+        
+    code_c2, _ = http_post("/api/click", {"url": url_a, "query": "clicktestquery"})
+    _record("Register click on Doc A returns 200", code_c2 == 200)
+    
+    # 4. Check trends endpoint
+    code_t, body_t = http_get("/api/trends?days=1&limit=5")
+    _record("Trends API returns 200", code_t == 200)
+    trends_data = body_t.get("data", {})
+    queries = trends_data.get("queries", [])
+    urls = trends_data.get("urls", [])
+    
+    trending_queries = [q["query"] for q in queries]
+    _record("Query 'clicktestquery' is in trending searches", "clicktestquery" in trending_queries)
+    
+    trending_urls = [u["url"] for u in urls]
+    _record("Doc B is in trending URLs", url_b in trending_urls)
+    _record("Doc A is in trending URLs", url_a in trending_urls)
+    
+    # Find Doc B click count in trends
+    doc_b_trend = next((u for u in urls if u["url"] == url_b), None)
+    _record("Doc B trend click count is 3", doc_b_trend is not None and doc_b_trend["clicks"] == 3)
+    
+    # 5. Verify ranking adjustment in search results
+    code_s2, body_s2 = http_get("/api/search?q=clicktestquery")
+    _record("Search after clicks returns 200", code_s2 == 200)
+    results_s2 = body_s2.get("data", {}).get("results", [])
+    _record("Search results count is 2", len(results_s2) == 2)
+    
+    # Doc B must be at index 0 (first) because 3 clicks > 1 click
+    if len(results_s2) == 2:
+        _record("Doc B ranks first due to click popularity", results_s2[0]["url"] == url_b)
+        _record("Doc A ranks second", results_s2[1]["url"] == url_a)
+        
+    # 6. Cleanup
+    conn = sqlite3.connect("shomaj_search.db")
+    conn.execute("DELETE FROM crawl_metadata WHERE url IN (?, ?)", (url_a, url_b))
+    conn.execute("DELETE FROM search_index WHERE url IN (?, ?)", (url_a, url_b))
+    conn.execute("DELETE FROM result_clicks WHERE url IN (?, ?)", (url_a, url_b))
+    conn.commit()
+    conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Main runner
 # ---------------------------------------------------------------------------
@@ -760,6 +843,7 @@ def main() -> int:
         ("22. Configuration Persistence", test_config_persistence),
         ("23. Result Ranking Feedback",   test_search_feedback),
         ("24. Date Range Filtering",      test_date_range_filtering),
+        ("25. Click Popularity & Trends", test_click_popularity_ranking_and_trends),
     ]
 
     for group_name, fn in tests:

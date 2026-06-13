@@ -431,7 +431,8 @@ async def search(
                 snippet(search_index, 2, '<mark>', '</mark>', '\u2026', 40) AS snippet,
                 (bm25(search_index, 10.0, 1.0) - (
                     COALESCE((SELECT vote * 2.0 FROM result_feedback WHERE url = s.url AND query = ? AND feedback_type = 'relevance_vote'), 0) +
-                    COALESCE((SELECT SUM(vote) * 0.5 FROM result_feedback WHERE url = s.url AND feedback_type = 'relevance_vote'), 0)
+                    COALESCE((SELECT SUM(vote) * 0.5 FROM result_feedback WHERE url = s.url AND feedback_type = 'relevance_vote'), 0) +
+                    COALESCE((SELECT COUNT(*) * 0.2 FROM result_clicks WHERE url = s.url AND query = ?), 0)
                 )) AS score,
                 m.domain,
                 m.is_private,
@@ -447,7 +448,7 @@ async def search(
             LIMIT ? OFFSET ?
         """
         rows = conn.execute(
-            sql, [q_clean] + [fts_query] + meta_params + [limit, offset]
+            sql, [q_clean, q_clean] + [fts_query] + meta_params + [limit, offset]
         ).fetchall()
 
         results = [
@@ -555,7 +556,7 @@ async def search_images(
     extra_where = ("AND " + " AND ".join(extra_filters)) if extra_filters else ""
 
     try:
-        select_params = [q_clean] + params + [limit, offset]
+        select_params = [q_clean, q_clean] + params + [limit, offset]
         rows = conn.execute(
             f"""
             SELECT
@@ -565,7 +566,8 @@ async def search_images(
                 m.llm_description, m.llm_tags,
                 (bm25(media_fts, 10.0, 2.0, 2.0, 5.0) - (
                     COALESCE((SELECT vote * 2.0 FROM result_feedback WHERE url = m.media_url AND query = ? AND feedback_type = 'relevance_vote'), 0) +
-                    COALESCE((SELECT SUM(vote) * 0.5 FROM result_feedback WHERE url = m.media_url AND feedback_type = 'relevance_vote'), 0)
+                    COALESCE((SELECT SUM(vote) * 0.5 FROM result_feedback WHERE url = m.media_url AND feedback_type = 'relevance_vote'), 0) +
+                    COALESCE((SELECT COUNT(*) * 0.2 FROM result_clicks WHERE url = m.media_url AND query = ?), 0)
                 )) AS score,
                 (SELECT COUNT(*) FROM result_feedback WHERE url = m.media_url AND feedback_type = 'relevance_vote' AND vote = 1) AS upvotes,
                 (SELECT COUNT(*) FROM result_feedback WHERE url = m.media_url AND feedback_type = 'relevance_vote' AND vote = -1) AS downvotes
@@ -674,7 +676,7 @@ async def search_videos(
     extra_where = ("AND " + " AND ".join(extra_filters)) if extra_filters else ""
 
     try:
-        select_params = [q_clean] + [fts_query] + extra_params + [limit, offset]
+        select_params = [q_clean, q_clean] + [fts_query] + extra_params + [limit, offset]
         rows = conn.execute(
             f"""
             SELECT
@@ -684,7 +686,8 @@ async def search_videos(
                 m.llm_description, m.llm_tags,
                 (bm25(media_fts, 10.0, 2.0, 2.0, 5.0) - (
                     COALESCE((SELECT vote * 2.0 FROM result_feedback WHERE url = m.media_url AND query = ? AND feedback_type = 'relevance_vote'), 0) +
-                    COALESCE((SELECT SUM(vote) * 0.5 FROM result_feedback WHERE url = m.media_url AND feedback_type = 'relevance_vote'), 0)
+                    COALESCE((SELECT SUM(vote) * 0.5 FROM result_feedback WHERE url = m.media_url AND feedback_type = 'relevance_vote'), 0) +
+                    COALESCE((SELECT COUNT(*) * 0.2 FROM result_clicks WHERE url = m.media_url AND query = ?), 0)
                 )) AS score,
                 (SELECT COUNT(*) FROM result_feedback WHERE url = m.media_url AND feedback_type = 'relevance_vote' AND vote = 1) AS upvotes,
                 (SELECT COUNT(*) FROM result_feedback WHERE url = m.media_url AND feedback_type = 'relevance_vote' AND vote = -1) AS downvotes
@@ -934,7 +937,7 @@ async def search_products(
     order_by_clause = "ORDER BY " + ", ".join(sort_clauses)
 
     try:
-        select_params = [q_clean] + extra_params + [limit, offset]
+        select_params = [q_clean, q_clean] + extra_params + [limit, offset]
         rows = conn.execute(
             f"""
             SELECT
@@ -944,7 +947,8 @@ async def search_products(
                 (bm25(product_fts, 10.0, 2.0, 1.0) - (
                     COALESCE((SELECT vote * 2.0 FROM result_feedback WHERE url = p.url AND query = ? AND feedback_type = 'relevance_vote'), 0) +
                     COALESCE((SELECT SUM(vote) * 0.5 FROM result_feedback WHERE url = p.url AND feedback_type = 'relevance_vote'), 0) +
-                    COALESCE((SELECT SUM(vote) * 5.0 FROM result_feedback WHERE url = p.url AND feedback_type = 'product_vote'), 0)
+                    COALESCE((SELECT SUM(vote) * 5.0 FROM result_feedback WHERE url = p.url AND feedback_type = 'product_vote'), 0) +
+                    COALESCE((SELECT COUNT(*) * 0.2 FROM result_clicks WHERE url = p.url AND query = ?), 0)
                 )) AS score,
                 (SELECT COUNT(*) FROM result_feedback WHERE url = p.url AND feedback_type = 'relevance_vote' AND vote = 1) AS upvotes,
                 (SELECT COUNT(*) FROM result_feedback WHERE url = p.url AND feedback_type = 'relevance_vote' AND vote = -1) AS downvotes,
@@ -1036,6 +1040,85 @@ async def submit_search_feedback(payload: FeedbackPayload):
     except Exception as exc:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+class ClickPayload(BaseModel):
+    """Payload to register a click on a search result URL."""
+    url:   str = Field(..., description="Clicked result URL")
+    query: str = Field(..., description="The query used for the search")
+
+
+@app.post("/api/click", tags=["Search"])
+async def register_click(payload: ClickPayload):
+    """
+    Registers a click on a search result URL, tracking query-specific popularity.
+    Clears cache for the query.
+    """
+    conn = get_db()
+    try:
+        now = int(time.time())
+        conn.execute(
+            "INSERT INTO result_clicks (url, query, clicked_at) VALUES (?, ?, ?)",
+            (payload.url, payload.query.strip(), now)
+        )
+        conn.commit()
+        # Invalidate dynamic cache
+        search_cache.clear()
+        return ok({"clicked": True})
+    except Exception as exc:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/trends", tags=["System"])
+async def get_trends(
+    days: int = Query(7, ge=1, le=365, description="Timeframe in days"),
+    limit: int = Query(10, ge=1, le=100, description="Max results to return"),
+):
+    """
+    Returns trending search queries and clicked URLs for a given timeframe.
+    """
+    conn = get_db()
+    now = int(time.time())
+    start_time = now - days * 86400
+    
+    # 1. Top clicked queries
+    queries = conn.execute(
+        """
+        SELECT query, COUNT(*) AS click_count
+        FROM result_clicks
+        WHERE clicked_at >= ?
+        GROUP BY query
+        ORDER BY click_count DESC, query ASC
+        LIMIT ?
+        """,
+        (start_time, limit)
+    ).fetchall()
+    
+    # 2. Top clicked URLs with titles
+    urls = conn.execute(
+        """
+        SELECT c.url, COUNT(*) AS click_count,
+               COALESCE(
+                   (SELECT title FROM search_index WHERE url = c.url),
+                   (SELECT name FROM product_index WHERE url = c.url),
+                   (SELECT title FROM media_index WHERE media_url = c.url),
+                   c.url
+               ) AS title
+        FROM result_clicks c
+        WHERE c.clicked_at >= ?
+        GROUP BY c.url
+        ORDER BY click_count DESC, c.url ASC
+        LIMIT ?
+        """,
+        (start_time, limit)
+    ).fetchall()
+    
+    return ok({
+        "timeframe_days": days,
+        "queries": [{"query": r["query"], "clicks": r["click_count"]} for r in queries],
+        "urls": [{"url": r["url"], "title": r["title"], "clicks": r["click_count"]} for r in urls]
+    })
 
 
 # ---------------------------------------------------------------------------

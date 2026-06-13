@@ -249,6 +249,17 @@ CREATE TABLE IF NOT EXISTS result_feedback (
 );
 
 CREATE INDEX IF NOT EXISTS idx_feedback_url_query ON result_feedback (url, query);
+
+-- Result clicks for trending queries and click popularity rankings
+CREATE TABLE IF NOT EXISTS result_clicks (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    url          TEXT NOT NULL,
+    query        TEXT NOT NULL,
+    clicked_at   INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_clicks_url_query ON result_clicks (url, query);
+CREATE INDEX IF NOT EXISTS idx_clicks_time ON result_clicks (clicked_at DESC);
 """
 
 
