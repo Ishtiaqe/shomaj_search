@@ -1,0 +1,1215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shomaj Search — Your Local Intelligence Engine</title>
+  <meta name="description" content="Shomaj Search is a private, local hybrid search engine that indexes pages you visit and actively crawls the open web." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    /* =====================================================================
+       Design Tokens
+    ===================================================================== */
+    :root {
+      --bg-primary:    #080b14;
+      --bg-secondary:  #0d1121;
+      --bg-card:       #111827;
+      --bg-glass:      rgba(17, 24, 39, 0.7);
+      --border:        rgba(108, 99, 255, 0.18);
+      --border-hover:  rgba(108, 99, 255, 0.45);
+      --accent-violet: #6c63ff;
+      --accent-teal:   #3ecfcf;
+      --accent-pink:   #f06292;
+      --accent-green:  #4ade80;
+      --accent-yellow: #fbbf24;
+      --text-primary:  #f0f2ff;
+      --text-secondary:#94a3b8;
+      --text-muted:    #475569;
+      --glow-violet:   0 0 30px rgba(108,99,255,0.25);
+      --glow-teal:     0 0 30px rgba(62,207,207,0.25);
+      --radius-sm:     8px;
+      --radius-md:     12px;
+      --radius-lg:     18px;
+      --radius-xl:     24px;
+      --font-main:     'Inter', system-ui, sans-serif;
+      --font-mono:     'JetBrains Mono', monospace;
+      --transition:    all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* =====================================================================
+       Reset & Base
+    ===================================================================== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--font-main);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+      line-height: 1.6;
+    }
+
+    /* Animated background orbs */
+    body::before, body::after {
+      content: '';
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.12;
+      pointer-events: none;
+      z-index: 0;
+    }
+    body::before {
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, var(--accent-violet), transparent);
+      top: -200px; left: -200px;
+      animation: orbFloat1 18s ease-in-out infinite alternate;
+    }
+    body::after {
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, var(--accent-teal), transparent);
+      bottom: -150px; right: -150px;
+      animation: orbFloat2 22s ease-in-out infinite alternate;
+    }
+
+    @keyframes orbFloat1 {
+      from { transform: translate(0, 0) scale(1); }
+      to   { transform: translate(80px, 60px) scale(1.15); }
+    }
+    @keyframes orbFloat2 {
+      from { transform: translate(0, 0) scale(1); }
+      to   { transform: translate(-60px, -80px) scale(1.1); }
+    }
+
+    /* =====================================================================
+       Layout
+    ===================================================================== */
+    .container {
+      position: relative;
+      z-index: 1;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* =====================================================================
+       Header / Hero
+    ===================================================================== */
+    .hero {
+      padding: 52px 0 32px;
+      text-align: center;
+    }
+
+    .logo-lockup {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .logo-mark {
+      width: 46px; height: 46px;
+      background: linear-gradient(135deg, var(--accent-violet), var(--accent-teal));
+      border-radius: var(--radius-sm);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; font-weight: 800; color: #fff;
+      box-shadow: var(--glow-violet), inset 0 1px 0 rgba(255,255,255,0.15);
+    }
+
+    .logo-name {
+      font-size: 28px;
+      font-weight: 800;
+      background: linear-gradient(90deg, var(--accent-violet), var(--accent-teal));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.5px;
+    }
+
+    .hero-tagline {
+      font-size: 13px;
+      color: var(--text-muted);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+
+    /* =====================================================================
+       Search Bar
+    ===================================================================== */
+    .search-section { padding: 0 0 32px; }
+
+    .search-wrapper {
+      position: relative;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    .search-input {
+      width: 100%;
+      padding: 18px 60px 18px 56px;
+      background: var(--bg-card);
+      border: 1.5px solid var(--border);
+      border-radius: 50px;
+      color: var(--text-primary);
+      font-family: var(--font-main);
+      font-size: 16px;
+      outline: none;
+      transition: var(--transition);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+    }
+    .search-input::placeholder { color: var(--text-muted); }
+    .search-input:focus {
+      border-color: var(--accent-violet);
+      box-shadow: var(--glow-violet), 0 4px 24px rgba(0,0,0,0.3);
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 20px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 20px;
+      color: var(--text-muted);
+      pointer-events: none;
+    }
+
+    .search-btn {
+      position: absolute;
+      right: 6px;
+      top: 50%;
+      transform: translateY(-50%);
+      padding: 10px 24px;
+      background: linear-gradient(135deg, var(--accent-violet), var(--accent-teal));
+      border: none;
+      border-radius: 50px;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      font-family: var(--font-main);
+    }
+    .search-btn:hover { opacity: 0.85; transform: translateY(-50%) scale(1.03); }
+    .search-btn:active { transform: translateY(-50%) scale(0.97); }
+
+    /* =====================================================================
+       Chips / Filter Row
+    ===================================================================== */
+    .filter-row {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .chip {
+      padding: 5px 14px;
+      border-radius: 50px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 12px;
+      cursor: pointer;
+      transition: var(--transition);
+      font-family: var(--font-main);
+    }
+    .chip:hover, .chip.active {
+      border-color: var(--accent-violet);
+      color: var(--accent-violet);
+      background: rgba(108,99,255,0.08);
+    }
+
+    /* =====================================================================
+       Stats Bar
+    ===================================================================== */
+    .stats-bar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+
+    .stat-card {
+      background: var(--bg-glass);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      backdrop-filter: blur(10px);
+      transition: var(--transition);
+      text-align: center;
+    }
+    .stat-card:hover {
+      border-color: var(--border-hover);
+      transform: translateY(-2px);
+    }
+
+    .stat-value {
+      font-size: 26px;
+      font-weight: 800;
+      font-family: var(--font-mono);
+      background: linear-gradient(135deg, var(--accent-violet), var(--accent-teal));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      margin-top: 2px;
+    }
+
+    /* =====================================================================
+       Main Grid
+    ===================================================================== */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 24px;
+      align-items: start;
+    }
+
+    @media (max-width: 820px) {
+      .main-grid { grid-template-columns: 1fr; }
+    }
+
+    /* =====================================================================
+       Results Panel
+    ===================================================================== */
+    .results-panel { min-height: 400px; }
+
+    .results-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .results-count {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .results-count strong { color: var(--accent-teal); }
+
+    .sort-select {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      font-size: 12px;
+      padding: 5px 10px;
+      outline: none;
+      cursor: pointer;
+      font-family: var(--font-main);
+    }
+
+    /* Result card */
+    .result-card {
+      background: var(--bg-glass);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 18px 20px;
+      margin-bottom: 12px;
+      backdrop-filter: blur(10px);
+      transition: var(--transition);
+      animation: fadeInUp 0.3s ease both;
+    }
+    .result-card:hover {
+      border-color: var(--border-hover);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(108,99,255,0.12);
+    }
+
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .result-badge-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .badge {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 50px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+    .badge-private {
+      background: rgba(240,98,146,0.15);
+      color: var(--accent-pink);
+      border: 1px solid rgba(240,98,146,0.3);
+    }
+    .badge-public {
+      background: rgba(62,207,207,0.1);
+      color: var(--accent-teal);
+      border: 1px solid rgba(62,207,207,0.25);
+    }
+
+    .result-domain {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+    }
+
+    .result-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+      text-decoration: none;
+      display: block;
+      margin-bottom: 6px;
+      line-height: 1.4;
+      transition: color 0.2s;
+    }
+    .result-title:hover { color: var(--accent-teal); }
+
+    .result-snippet {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+    .result-snippet mark {
+      background: rgba(108,99,255,0.25);
+      color: var(--accent-violet);
+      border-radius: 2px;
+      padding: 0 2px;
+    }
+
+    .result-meta {
+      display: flex;
+      gap: 12px;
+      margin-top: 10px;
+      align-items: center;
+    }
+
+    .result-score {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--accent-green);
+    }
+
+    .result-time {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Empty / loading states */
+    .state-message {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-muted);
+    }
+    .state-message .icon { font-size: 48px; margin-bottom: 12px; }
+    .state-message p { font-size: 14px; line-height: 1.7; }
+
+    /* =====================================================================
+       Sidebar — Crawler Control
+    ===================================================================== */
+    .sidebar { display: flex; flex-direction: column; gap: 16px; }
+
+    .panel {
+      background: var(--bg-glass);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      backdrop-filter: blur(12px);
+    }
+
+    .panel-title {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Crawler state indicator */
+    .crawler-state {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .state-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      transition: var(--transition);
+    }
+    .state-dot.IDLE    { background: var(--text-muted); }
+    .state-dot.RUNNING { background: var(--accent-green); box-shadow: 0 0 8px var(--accent-green); animation: pulse 1.5s infinite; }
+    .state-dot.PAUSED  { background: var(--accent-yellow); box-shadow: 0 0 8px var(--accent-yellow); }
+    .state-dot.STOPPED { background: var(--accent-pink); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.6; transform: scale(1.3); }
+    }
+
+    .state-label {
+      font-size: 15px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+    }
+    .state-label.RUNNING { color: var(--accent-green); }
+    .state-label.PAUSED  { color: var(--accent-yellow); }
+    .state-label.STOPPED { color: var(--accent-pink); }
+    .state-label.IDLE    { color: var(--text-muted); }
+
+    /* Control buttons */
+    .ctrl-buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .ctrl-btn {
+      padding: 9px 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid transparent;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      font-family: var(--font-main);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }
+
+    .ctrl-btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    .btn-start {
+      background: rgba(74,222,128,0.1);
+      border-color: rgba(74,222,128,0.3);
+      color: var(--accent-green);
+    }
+    .btn-start:not(:disabled):hover {
+      background: rgba(74,222,128,0.2);
+      box-shadow: 0 0 12px rgba(74,222,128,0.2);
+    }
+
+    .btn-pause {
+      background: rgba(251,191,36,0.1);
+      border-color: rgba(251,191,36,0.3);
+      color: var(--accent-yellow);
+    }
+    .btn-pause:not(:disabled):hover {
+      background: rgba(251,191,36,0.2);
+      box-shadow: 0 0 12px rgba(251,191,36,0.2);
+    }
+
+    .btn-stop {
+      background: rgba(240,98,146,0.1);
+      border-color: rgba(240,98,146,0.3);
+      color: var(--accent-pink);
+    }
+    .btn-stop:not(:disabled):hover {
+      background: rgba(240,98,146,0.2);
+      box-shadow: 0 0 12px rgba(240,98,146,0.2);
+    }
+
+    .btn-seed {
+      background: rgba(108,99,255,0.1);
+      border-color: rgba(108,99,255,0.3);
+      color: var(--accent-violet);
+    }
+    .btn-seed:not(:disabled):hover {
+      background: rgba(108,99,255,0.2);
+      box-shadow: 0 0 12px rgba(108,99,255,0.2);
+    }
+
+    /* Queue stats mini-grid */
+    .queue-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+    }
+
+    .queue-stat {
+      background: rgba(0,0,0,0.2);
+      border-radius: var(--radius-sm);
+      padding: 10px 8px;
+      text-align: center;
+    }
+
+    .queue-stat-val {
+      font-size: 18px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+    }
+    .queue-stat-val.pending   { color: var(--accent-yellow); }
+    .queue-stat-val.completed { color: var(--accent-green); }
+    .queue-stat-val.failed    { color: var(--accent-pink); }
+
+    .queue-stat-lbl {
+      font-size: 9px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-top: 2px;
+    }
+
+    /* Config inputs */
+    .config-field {
+      margin-bottom: 12px;
+    }
+
+    .config-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .config-input {
+      width: 100%;
+      padding: 9px 12px;
+      background: rgba(0,0,0,0.25);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: 14px;
+      outline: none;
+      transition: var(--transition);
+    }
+    .config-input:focus {
+      border-color: var(--accent-violet);
+      box-shadow: 0 0 0 3px rgba(108,99,255,0.1);
+    }
+
+    .config-apply-btn {
+      width: 100%;
+      padding: 9px;
+      background: linear-gradient(135deg, var(--accent-violet), var(--accent-teal));
+      border: none;
+      border-radius: var(--radius-sm);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: var(--transition);
+      font-family: var(--font-main);
+      margin-top: 4px;
+    }
+    .config-apply-btn:hover { opacity: 0.85; }
+
+    /* Seed URL textarea */
+    .seed-textarea {
+      width: 100%;
+      min-height: 80px;
+      padding: 10px 12px;
+      background: rgba(0,0,0,0.25);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      outline: none;
+      resize: vertical;
+      transition: var(--transition);
+    }
+    .seed-textarea:focus {
+      border-color: var(--accent-violet);
+      box-shadow: 0 0 0 3px rgba(108,99,255,0.1);
+    }
+    .seed-textarea::placeholder { color: var(--text-muted); }
+
+    /* Toast notifications */
+    #toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .toast {
+      padding: 12px 18px;
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      backdrop-filter: blur(12px);
+      animation: toastIn 0.3s ease both;
+      max-width: 300px;
+    }
+    .toast-success { background: rgba(74,222,128,0.15); border: 1px solid rgba(74,222,128,0.4); color: var(--accent-green); }
+    .toast-error   { background: rgba(240,98,146,0.15); border: 1px solid rgba(240,98,146,0.4); color: var(--accent-pink); }
+    .toast-info    { background: rgba(108,99,255,0.15); border: 1px solid rgba(108,99,255,0.4); color: var(--accent-violet); }
+
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateX(30px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    /* =====================================================================
+       Uptime / meta row in sidebar
+    ===================================================================== */
+    .uptime-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .uptime-val { font-family: var(--font-mono); color: var(--text-secondary); }
+
+    /* =====================================================================
+       Pagination
+    ===================================================================== */
+    .pagination {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 20px;
+    }
+
+    .page-btn {
+      width: 36px; height: 36px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 13px;
+      cursor: pointer;
+      transition: var(--transition);
+      font-family: var(--font-main);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .page-btn:hover, .page-btn.active {
+      border-color: var(--accent-violet);
+      color: var(--accent-violet);
+      background: rgba(108,99,255,0.1);
+    }
+    .page-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    /* =====================================================================
+       Footer
+    ===================================================================== */
+    .footer {
+      text-align: center;
+      padding: 32px 0 20px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .footer a {
+      color: var(--accent-violet);
+      text-decoration: none;
+    }
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<!-- =========================================================
+     Toast Container
+========================================================= -->
+<div id="toast-container" aria-live="polite"></div>
+
+<!-- =========================================================
+     Hero
+========================================================= -->
+<div class="container">
+  <section class="hero">
+    <div class="logo-lockup">
+      <div class="logo-mark">S</div>
+      <span class="logo-name">Shomaj Search</span>
+    </div>
+    <p class="hero-tagline">Your Private Intelligence Engine</p>
+  </section>
+
+  <!-- ===================================================
+       Search Bar
+  =================================================== -->
+  <section class="search-section">
+    <div class="search-wrapper">
+      <span class="search-icon" aria-hidden="true">🔍</span>
+      <input
+        id="searchInput"
+        type="search"
+        class="search-input"
+        placeholder="Search your indexed knowledge…"
+        aria-label="Search query"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <button id="searchBtn" class="search-btn" aria-label="Run search">Search</button>
+    </div>
+    <div class="filter-row" role="group" aria-label="Result filters">
+      <button class="chip active" data-filter="all"     id="filterAll">All</button>
+      <button class="chip"        data-filter="public"  id="filterPublic">🌐 Web</button>
+      <button class="chip"        data-filter="private" id="filterPrivate">🔒 My Pages</button>
+    </div>
+  </section>
+
+  <!-- ===================================================
+       Stats Bar
+  =================================================== -->
+  <div class="stats-bar" id="statsBar">
+    <div class="stat-card">
+      <div class="stat-value" id="statTotal">—</div>
+      <div class="stat-label">Total Indexed</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="statPublic">—</div>
+      <div class="stat-label">Web Pages</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="statPrivate">—</div>
+      <div class="stat-label">My Pages</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="statProcessed">—</div>
+      <div class="stat-label">Crawled</div>
+    </div>
+  </div>
+
+  <!-- ===================================================
+       Main Grid
+  =================================================== -->
+  <div class="main-grid">
+
+    <!-- Results Panel -->
+    <main class="results-panel" role="main">
+      <div class="results-header">
+        <div class="results-count" id="resultsCount" aria-live="polite"></div>
+        <select class="sort-select" id="sortSelect" aria-label="Sort results">
+          <option value="relevance">Relevance</option>
+          <option value="recent">Most Recent</option>
+        </select>
+      </div>
+      <div id="resultsContainer">
+        <div class="state-message">
+          <div class="icon">🧠</div>
+          <p>Start typing to search your indexed knowledge base.<br />
+             The more you browse, the smarter Shomaj gets.</p>
+        </div>
+      </div>
+      <div class="pagination" id="pagination" hidden></div>
+    </main>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" aria-label="Crawler control panel">
+
+      <!-- Crawler Status Panel -->
+      <div class="panel" id="crawlerPanel">
+        <div class="panel-title">⚙️ Crawler Control</div>
+
+        <div class="crawler-state">
+          <div class="state-dot IDLE" id="stateDot"></div>
+          <span class="state-label IDLE" id="stateLabel">IDLE</span>
+        </div>
+
+        <div class="ctrl-buttons">
+          <button class="ctrl-btn btn-start" id="btnStart"  aria-label="Start crawler">▶ Start</button>
+          <button class="ctrl-btn btn-pause" id="btnPause"  aria-label="Pause crawler">⏸ Pause</button>
+          <button class="ctrl-btn btn-stop"  id="btnStop"   aria-label="Stop crawler" style="grid-column:1/-1">⏹ Stop &amp; Reset</button>
+        </div>
+
+        <div class="panel-title" style="margin-top:4px">📊 Queue</div>
+        <div class="queue-grid" id="queueGrid">
+          <div class="queue-stat">
+            <div class="queue-stat-val pending"   id="qPending">—</div>
+            <div class="queue-stat-lbl">Pending</div>
+          </div>
+          <div class="queue-stat">
+            <div class="queue-stat-val completed" id="qCompleted">—</div>
+            <div class="queue-stat-lbl">Done</div>
+          </div>
+          <div class="queue-stat">
+            <div class="queue-stat-val failed"    id="qFailed">—</div>
+            <div class="queue-stat-lbl">Failed</div>
+          </div>
+        </div>
+
+        <div class="uptime-row">
+          <span>Uptime</span>
+          <span class="uptime-val" id="uptimeVal">0s</span>
+        </div>
+      </div>
+
+      <!-- Configuration Panel -->
+      <div class="panel">
+        <div class="panel-title">🎛 Configuration</div>
+        <div class="config-field">
+          <label class="config-label" for="cfgDelay">Delay per domain (seconds)</label>
+          <input class="config-input" type="number" id="cfgDelay" min="0" max="60" step="0.5" value="1.5" />
+        </div>
+        <div class="config-field">
+          <label class="config-label" for="cfgDepth">Max crawl depth</label>
+          <input class="config-input" type="number" id="cfgDepth" min="0" max="10" step="1" value="3" />
+        </div>
+        <button class="config-apply-btn" id="btnApplyConfig">Apply Configuration</button>
+      </div>
+
+      <!-- Seed URLs Panel -->
+      <div class="panel">
+        <div class="panel-title">🌱 Seed URLs</div>
+        <textarea
+          class="seed-textarea"
+          id="seedTextarea"
+          placeholder="https://example.com&#10;https://news.ycombinator.com&#10;(one URL per line)"
+          aria-label="Seed URLs to add to crawler queue"
+        ></textarea>
+        <button class="config-apply-btn" id="btnSeed" style="margin-top:10px">Add to Queue</button>
+      </div>
+
+    </aside>
+  </div>
+
+  <footer class="footer">
+    <p>Shomaj Search &copy; 2025 &mdash; <a href="https://shomaj.one" target="_blank" rel="noopener">shomaj.one</a>
+    &mdash; Powered by SQLite FTS5 &amp; FastAPI</p>
+  </footer>
+</div>
+
+<!-- =========================================================
+     JavaScript — All UI Logic
+========================================================= -->
+<script>
+  "use strict";
+
+  const API = "http://localhost:8000";
+  let currentQuery  = "";
+  let currentOffset = 0;
+  let currentFilter = "all";
+  const PAGE_SIZE   = 15;
+
+  // -----------------------------------------------------------------------
+  // Toast notifications
+  // -----------------------------------------------------------------------
+  function showToast(message, type = "info", duration = 3500) {
+    const container = document.getElementById("toast-container");
+    const toast = document.createElement("div");
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = "0";
+      toast.style.transform = "translateX(30px)";
+      toast.style.transition = "all 0.3s ease";
+      setTimeout(() => toast.remove(), 300);
+    }, duration);
+  }
+
+  // -----------------------------------------------------------------------
+  // API helpers
+  // -----------------------------------------------------------------------
+  async function apiFetch(path, options = {}) {
+    const r = await fetch(API + path, {
+      headers: { "Content-Type": "application/json" },
+      ...options,
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ detail: r.statusText }));
+      throw new Error(err.detail || `HTTP ${r.status}`);
+    }
+    return r.json();
+  }
+
+  // -----------------------------------------------------------------------
+  // Search
+  // -----------------------------------------------------------------------
+  async function runSearch(query, offset = 0) {
+    if (!query.trim()) return;
+    currentQuery  = query;
+    currentOffset = offset;
+
+    const container = document.getElementById("resultsContainer");
+    container.innerHTML = `<div class="state-message"><div class="icon">⏳</div><p>Searching…</p></div>`;
+    document.getElementById("pagination").hidden = true;
+
+    try {
+      const params = new URLSearchParams({
+        q:      query,
+        limit:  PAGE_SIZE,
+        offset: offset,
+      });
+      const data = await apiFetch(`/api/search?${params}`);
+      const { results, total_hits, returned } = data.data;
+
+      // Filter client-side
+      let filtered = results;
+      if (currentFilter === "public")  filtered = results.filter(r => !r.is_private);
+      if (currentFilter === "private") filtered = results.filter(r =>  r.is_private);
+
+      // Update count
+      const countEl = document.getElementById("resultsCount");
+      countEl.innerHTML = filtered.length
+        ? `<strong>${total_hits.toLocaleString()}</strong> results for "<em>${escapeHtml(query)}</em>"`
+        : "No results found";
+
+      if (!filtered.length) {
+        container.innerHTML = `
+          <div class="state-message">
+            <div class="icon">🔎</div>
+            <p>No results for "<strong>${escapeHtml(query)}</strong>".<br />
+               Try different keywords or start the crawler to index more pages.</p>
+          </div>`;
+        return;
+      }
+
+      // Render results
+      container.innerHTML = filtered.map((r, i) => `
+        <article class="result-card" style="animation-delay:${i * 0.05}s" aria-label="Search result">
+          <div class="result-badge-row">
+            <span class="badge ${r.is_private ? 'badge-private' : 'badge-public'}">
+              ${r.is_private ? '🔒 Private' : '🌐 Web'}
+            </span>
+            <span class="result-domain">${escapeHtml(r.domain)}</span>
+          </div>
+          <a class="result-title" href="${escapeHtml(r.url)}" target="_blank" rel="noopener" title="${escapeHtml(r.title)}">
+            ${escapeHtml(r.title || r.url)}
+          </a>
+          <div class="result-snippet">${r.snippet || ""}</div>
+          <div class="result-meta">
+            <span class="result-score">Score: ${r.score.toFixed(3)}</span>
+            <span class="result-time">${r.last_scanned ? formatTime(r.last_scanned) : ""}</span>
+          </div>
+        </article>
+      `).join("");
+
+      // Pagination
+      renderPagination(total_hits, offset);
+
+    } catch (err) {
+      container.innerHTML = `
+        <div class="state-message">
+          <div class="icon">⚠️</div>
+          <p>Search error: ${escapeHtml(err.message)}<br />
+             Make sure the backend is running at <code>localhost:8000</code>.</p>
+        </div>`;
+      showToast("Search failed: " + err.message, "error");
+    }
+  }
+
+  function renderPagination(total, offset) {
+    const pag = document.getElementById("pagination");
+    if (total <= PAGE_SIZE) { pag.hidden = true; return; }
+    pag.hidden = false;
+
+    const pages     = Math.ceil(total / PAGE_SIZE);
+    const current   = Math.floor(offset / PAGE_SIZE);
+    const maxButtons = 7;
+    let start = Math.max(0, current - 3);
+    let end   = Math.min(pages - 1, start + maxButtons - 1);
+    if (end - start < maxButtons - 1) start = Math.max(0, end - maxButtons + 1);
+
+    let html = `
+      <button class="page-btn" id="pagePrev" ${current === 0 ? "disabled" : ""} aria-label="Previous page">‹</button>`;
+    for (let p = start; p <= end; p++) {
+      html += `<button class="page-btn ${p === current ? 'active' : ''}" data-page="${p}" aria-label="Page ${p+1}">${p+1}</button>`;
+    }
+    html += `<button class="page-btn" id="pageNext" ${current >= pages-1 ? "disabled" : ""} aria-label="Next page">›</button>`;
+    pag.innerHTML = html;
+
+    pag.querySelectorAll("[data-page]").forEach(btn => {
+      btn.addEventListener("click", () => runSearch(currentQuery, parseInt(btn.dataset.page) * PAGE_SIZE));
+    });
+    pag.querySelector("#pagePrev")?.addEventListener("click", () => runSearch(currentQuery, offset - PAGE_SIZE));
+    pag.querySelector("#pageNext")?.addEventListener("click", () => runSearch(currentQuery, offset + PAGE_SIZE));
+  }
+
+  // -----------------------------------------------------------------------
+  // Stats polling
+  // -----------------------------------------------------------------------
+  async function refreshStats() {
+    try {
+      const [statsData, crawlData] = await Promise.all([
+        apiFetch("/api/stats"),
+        apiFetch("/api/crawl/status"),
+      ]);
+
+      const s = statsData.data;
+      const c = crawlData.data;
+
+      document.getElementById("statTotal").textContent    = s.total_indexed.toLocaleString();
+      document.getElementById("statPublic").textContent   = s.public_indexed.toLocaleString();
+      document.getElementById("statPrivate").textContent  = s.private_indexed.toLocaleString();
+      document.getElementById("statProcessed").textContent = c.items_processed.toLocaleString();
+
+      // Queue
+      document.getElementById("qPending").textContent   = (c.queue_pending   ?? 0).toLocaleString();
+      document.getElementById("qCompleted").textContent = (c.queue_completed ?? 0).toLocaleString();
+      document.getElementById("qFailed").textContent    = (c.queue_failed    ?? 0).toLocaleString();
+
+      // State
+      const state = c.state;
+      const dot   = document.getElementById("stateDot");
+      const lbl   = document.getElementById("stateLabel");
+      dot.className   = `state-dot ${state}`;
+      lbl.className   = `state-label ${state}`;
+      lbl.textContent = state;
+
+      // Uptime
+      const up = c.uptime_seconds || 0;
+      document.getElementById("uptimeVal").textContent = formatUptime(up);
+
+      // Update config defaults from server
+      if (c.delay_seconds !== undefined) document.getElementById("cfgDelay").value = c.delay_seconds;
+      if (c.max_depth !== undefined)     document.getElementById("cfgDepth").value  = c.max_depth;
+
+    } catch {
+      // Backend offline — don't crash the UI
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Crawler control buttons
+  // -----------------------------------------------------------------------
+  async function crawlerAction(action, payload = null) {
+    try {
+      const opts = { method: "POST" };
+      if (payload) opts.body = JSON.stringify(payload);
+      const data = await apiFetch(`/api/crawl/${action}`, opts);
+      showToast(`Crawler: ${data.data?.result || action}`, "success");
+      await refreshStats();
+    } catch (err) {
+      showToast(`Error: ${err.message}`, "error");
+    }
+  }
+
+  document.getElementById("btnStart").addEventListener("click",  () => crawlerAction("start"));
+  document.getElementById("btnPause").addEventListener("click",  () => crawlerAction("pause"));
+  document.getElementById("btnStop").addEventListener("click",   () => crawlerAction("stop"));
+
+  document.getElementById("btnApplyConfig").addEventListener("click", async () => {
+    const delay = parseFloat(document.getElementById("cfgDelay").value);
+    const depth = parseInt(document.getElementById("cfgDepth").value);
+    if (isNaN(delay) || isNaN(depth)) { showToast("Invalid config values", "error"); return; }
+    await crawlerAction("config", { delay_seconds: delay, max_depth: depth });
+  });
+
+  document.getElementById("btnSeed").addEventListener("click", async () => {
+    const textarea = document.getElementById("seedTextarea");
+    const lines = textarea.value.split("\n").map(l => l.trim()).filter(Boolean);
+    if (!lines.length) { showToast("No URLs to seed", "info"); return; }
+    try {
+      const data = await apiFetch("/api/crawl/seed", {
+        method: "POST",
+        body:   JSON.stringify({ urls: lines, depth: 0 }),
+      });
+      const { added, skipped } = data.data;
+      showToast(`Seeded ${added} URLs (${skipped} skipped/blocked)`, "success");
+      textarea.value = "";
+      await refreshStats();
+    } catch (err) {
+      showToast(`Seed error: ${err.message}`, "error");
+    }
+  });
+
+  // -----------------------------------------------------------------------
+  // Search input events
+  // -----------------------------------------------------------------------
+  const searchInput = document.getElementById("searchInput");
+  let debounceTimer;
+
+  searchInput.addEventListener("input", () => {
+    clearTimeout(debounceTimer);
+    const q = searchInput.value.trim();
+    if (q.length < 2) {
+      document.getElementById("resultsCount").textContent = "";
+      return;
+    }
+    debounceTimer = setTimeout(() => runSearch(q, 0), 350);
+  });
+
+  searchInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      clearTimeout(debounceTimer);
+      runSearch(searchInput.value.trim(), 0);
+    }
+  });
+
+  document.getElementById("searchBtn").addEventListener("click", () => {
+    clearTimeout(debounceTimer);
+    runSearch(searchInput.value.trim(), 0);
+  });
+
+  // -----------------------------------------------------------------------
+  // Filter chips
+  // -----------------------------------------------------------------------
+  document.querySelectorAll(".chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      document.querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
+      chip.classList.add("active");
+      currentFilter = chip.dataset.filter;
+      if (currentQuery) runSearch(currentQuery, 0);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Utilities
+  // -----------------------------------------------------------------------
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g,  "&amp;")
+      .replace(/</g,  "&lt;")
+      .replace(/>/g,  "&gt;")
+      .replace(/"/g,  "&quot;")
+      .replace(/'/g,  "&#39;");
+  }
+
+  function formatTime(ts) {
+    if (!ts) return "";
+    const d = new Date(ts * 1000);
+    const diff = Math.floor((Date.now() - d) / 1000);
+    if (diff <  60)   return `${diff}s ago`;
+    if (diff < 3600)  return `${Math.floor(diff/60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+    return d.toLocaleDateString();
+  }
+
+  function formatUptime(seconds) {
+    if (seconds < 60)   return `${Math.round(seconds)}s`;
+    if (seconds < 3600) return `${Math.floor(seconds/60)}m ${Math.round(seconds%60)}s`;
+    return `${Math.floor(seconds/3600)}h ${Math.floor((seconds%3600)/60)}m`;
+  }
+
+  // -----------------------------------------------------------------------
+  // Initialise + auto-refresh
+  // -----------------------------------------------------------------------
+  refreshStats();
+  setInterval(refreshStats, 5000);  // refresh every 5 seconds
+</script>
+
+</body>
+</html>

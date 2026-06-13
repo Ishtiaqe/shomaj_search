@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "Shomaj Search — Page Indexer",
+  "short_name": "Shomaj",
+  "version": "1.0.0",
+  "description": "Passively indexes every page you visit into your local Shomaj Search engine at localhost:8000.",
+
+  "permissions": [
+    "tabs",
+    "activeTab"
+  ],
+
+  "host_permissions": [
+    "http://localhost:8000/*"
+  ],
+
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+
+  "action": {
+    "default_title": "Shomaj Search Indexer",
+    "default_popup": "popup.html"
+  },
+
+  "icons": {
+    "16":  "icons/icon16.png",
+    "48":  "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "shomaj-indexer@shomaj.one",
+      "strict_min_version": "109.0"
+    }
+  }
+}
