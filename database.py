@@ -235,6 +235,20 @@ CREATE TABLE IF NOT EXISTS system_settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+-- -----------------------------------------------------------------------
+-- Result Feedback — user upvotes/downvotes and product classification votes
+-- -----------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS result_feedback (
+    url           TEXT NOT NULL,
+    query         TEXT NOT NULL,
+    feedback_type TEXT NOT NULL, -- 'relevance_vote' | 'product_vote'
+    vote          INTEGER NOT NULL, -- 1 or -1
+    submitted_at  INTEGER NOT NULL,
+    PRIMARY KEY (url, query, feedback_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_feedback_url_query ON result_feedback (url, query);
 """
 
 
@@ -610,4 +624,27 @@ def set_system_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
         """,
         (key, str(value)),
     )
+
+
+def submit_feedback(
+    conn: sqlite3.Connection,
+    url: str,
+    query: str,
+    feedback_type: str,
+    vote: int,
+) -> None:
+    """Inserts or replaces a feedback entry in the result_feedback table."""
+    import time as _time
+    now = int(_time.time())
+    conn.execute(
+        """
+        INSERT INTO result_feedback (url, query, feedback_type, vote, submitted_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(url, query, feedback_type) DO UPDATE SET
+            vote = excluded.vote,
+            submitted_at = excluded.submitted_at
+        """,
+        (url, query, feedback_type, vote, now),
+    )
+    search_cache.clear()
 

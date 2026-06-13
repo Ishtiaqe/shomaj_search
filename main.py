@@ -22,6 +22,7 @@ from database import (
     enqueue_url, get_db, init_db, upsert_index,
     upsert_media, log_search_history, upsert_product,
     upsert_managed_domain, get_domain_config, get_all_domains,
+    submit_feedback,
 )
 from cache import search_cache
 from media_utils import process_media_thumbnail_bg
@@ -139,6 +140,14 @@ class DomainConfigPayload(BaseModel):
     priority:      int   = Field(5, ge=1, le=10, description="Crawl priority 1-10")
     sitemap_url:   str   = Field("",             description="Override sitemap URL")
     notes:         str   = Field("",             description="Human-readable notes")
+
+
+class FeedbackPayload(BaseModel):
+    """Payload to submit user feedback for search relevance/categorization."""
+    url:           str   = Field(..., description="Target result URL")
+    query:         str   = Field(..., description="User search query")
+    feedback_type: str   = Field(..., description="'relevance_vote' or 'product_vote'")
+    vote:          int   = Field(..., ge=-1, le=1, description="1 for up/plus, -1 for down/minus")
 
 
 # ---------------------------------------------------------------------------
@@ -412,11 +421,16 @@ async def search(
                 s.url,
                 s.title,
                 snippet(search_index, 2, '<mark>', '</mark>', '\u2026', 40) AS snippet,
-                bm25(search_index, 10.0, 1.0)                               AS score,
+                (bm25(search_index, 10.0, 1.0) - (
+                    COALESCE((SELECT vote * 2.0 FROM result_feedback WHERE url = s.url AND query = ? AND feedback_type = 'relevance_vote'), 0) +
+                    COALESCE((SELECT SUM(vote) * 0.5 FROM result_feedback WHERE url = s.url AND feedback_type = 'relevance_vote'), 0)
+                )) AS score,
                 m.domain,
                 m.is_private,
                 m.last_scanned,
-                (SELECT thumbnail_url FROM media_index WHERE page_url = s.url AND media_type = 'image' LIMIT 1) AS image_url
+                (SELECT thumbnail_url FROM media_index WHERE page_url = s.url AND media_type = 'image' LIMIT 1) AS image_url,
+                (SELECT COUNT(*) FROM result_feedback WHERE url = s.url AND feedback_type = 'relevance_vote' AND vote = 1) AS upvotes,
+                (SELECT COUNT(*) FROM result_feedback WHERE url = s.url AND feedback_type = 'relevance_vote' AND vote = -1) AS downvotes
             FROM search_index s
             JOIN crawl_metadata m ON m.url = s.url
             WHERE search_index MATCH ?
@@ -425,7 +439,7 @@ async def search(
             LIMIT ? OFFSET ?
         """
         rows = conn.execute(
-            sql, [fts_query] + meta_params + [limit, offset]
+            sql, [q_clean] + [fts_query] + meta_params + [limit, offset]
         ).fetchall()
 
         results = [
@@ -438,6 +452,8 @@ async def search(
                 "is_private":   bool(row["is_private"]),
                 "last_scanned": row["last_scanned"],
                 "image_url":    row["image_url"],
+                "upvotes":      row["upvotes"],
+                "downvotes":    row["downvotes"],
             }
             for row in rows
         ]
@@ -523,27 +539,34 @@ async def search_images(
     extra_where = ("AND " + " AND ".join(extra_filters)) if extra_filters else ""
 
     try:
+        select_params = [q_clean] + params + [limit, offset]
         rows = conn.execute(
             f"""
             SELECT
                 m.media_url, m.page_url, m.title, m.description,
                 m.domain, m.width, m.height, m.format,
                 m.thumbnail_url, m.is_private, m.indexed_at,
-                m.llm_description, m.llm_tags
+                m.llm_description, m.llm_tags,
+                (bm25(media_fts, 10.0, 2.0, 2.0, 5.0) - (
+                    COALESCE((SELECT vote * 2.0 FROM result_feedback WHERE url = m.media_url AND query = ? AND feedback_type = 'relevance_vote'), 0) +
+                    COALESCE((SELECT SUM(vote) * 0.5 FROM result_feedback WHERE url = m.media_url AND feedback_type = 'relevance_vote'), 0)
+                )) AS score,
+                (SELECT COUNT(*) FROM result_feedback WHERE url = m.media_url AND feedback_type = 'relevance_vote' AND vote = 1) AS upvotes,
+                (SELECT COUNT(*) FROM result_feedback WHERE url = m.media_url AND feedback_type = 'relevance_vote' AND vote = -1) AS downvotes
             FROM media_fts f
             JOIN media_index m ON m.media_url = f.media_url
-            WHERE f MATCH ? AND m.media_type = 'image'
+            WHERE media_fts MATCH ? AND m.media_type = 'image'
             {extra_where}
-            ORDER BY bm25(media_fts, 10.0, 2.0, 2.0, 5.0) ASC
+            ORDER BY score ASC
             LIMIT ? OFFSET ?
             """,
-            params + [limit, offset],
+            select_params,
         ).fetchall()
 
         total = conn.execute(
             f"""SELECT COUNT(*) AS cnt FROM media_fts f
                 JOIN media_index m ON m.media_url = f.media_url
-                WHERE f MATCH ? AND m.media_type = 'image' {extra_where}""",
+                WHERE media_fts MATCH ? AND m.media_type = 'image' {extra_where}""",
             [fts_query] + params[1:],
         ).fetchone()["cnt"]
 
@@ -562,6 +585,9 @@ async def search_images(
                 "indexed_at":     row["indexed_at"],
                 "llm_description": row["llm_description"],
                 "llm_tags":       row["llm_tags"],
+                "score":          round(-row["score"], 4) if row["score"] is not None else 0.0,
+                "upvotes":        row["upvotes"],
+                "downvotes":      row["downvotes"],
             }
             for row in rows
         ]
@@ -624,29 +650,35 @@ async def search_videos(
     extra_where = ("AND " + " AND ".join(extra_filters)) if extra_filters else ""
 
     try:
-        params = [fts_query] + extra_params + [limit, offset]
+        select_params = [q_clean] + extra_params + [limit, offset]
         rows = conn.execute(
             f"""
             SELECT
                 m.media_url, m.page_url, m.title, m.description,
                 m.domain, m.duration_seconds, m.format,
                 m.thumbnail_url, m.is_private, m.indexed_at,
-                m.llm_description, m.llm_tags
+                m.llm_description, m.llm_tags,
+                (bm25(media_fts, 10.0, 2.0, 2.0, 5.0) - (
+                    COALESCE((SELECT vote * 2.0 FROM result_feedback WHERE url = m.media_url AND query = ? AND feedback_type = 'relevance_vote'), 0) +
+                    COALESCE((SELECT SUM(vote) * 0.5 FROM result_feedback WHERE url = m.media_url AND feedback_type = 'relevance_vote'), 0)
+                )) AS score,
+                (SELECT COUNT(*) FROM result_feedback WHERE url = m.media_url AND feedback_type = 'relevance_vote' AND vote = 1) AS upvotes,
+                (SELECT COUNT(*) FROM result_feedback WHERE url = m.media_url AND feedback_type = 'relevance_vote' AND vote = -1) AS downvotes
             FROM media_fts f
             JOIN media_index m ON m.media_url = f.media_url
-            WHERE f MATCH ? AND m.media_type = 'video'
+            WHERE media_fts MATCH ? AND m.media_type = 'video'
             {extra_where}
-            ORDER BY bm25(media_fts, 10.0, 2.0, 2.0, 5.0) ASC
+            ORDER BY score ASC
             LIMIT ? OFFSET ?
             """,
-            params,
+            select_params,
         ).fetchall()
 
         count_params = [fts_query] + extra_params
         total = conn.execute(
             f"""SELECT COUNT(*) AS cnt FROM media_fts f
                 JOIN media_index m ON m.media_url = f.media_url
-                WHERE f MATCH ? AND m.media_type = 'video' {extra_where}""",
+                WHERE media_fts MATCH ? AND m.media_type = 'video' {extra_where}""",
             count_params,
         ).fetchone()["cnt"]
 
@@ -664,6 +696,9 @@ async def search_videos(
                 "indexed_at":      row["indexed_at"],
                 "llm_description": row["llm_description"],
                 "llm_tags":        row["llm_tags"],
+                "score":          round(-row["score"], 4) if row["score"] is not None else 0.0,
+                "upvotes":        row["upvotes"],
+                "downvotes":      row["downvotes"],
             }
             for row in rows
         ]
@@ -867,14 +902,22 @@ async def search_products(
     order_by_clause = "ORDER BY " + ", ".join(sort_clauses)
 
     try:
-        select_params = extra_params + [limit, offset]
+        select_params = [q_clean] + extra_params + [limit, offset]
         rows = conn.execute(
             f"""
             SELECT
                 p.url, p.name, p.description, p.brand, p.sku, p.price,
                 p.price_text, p.currency, p.availability, p.image_url,
                 p.domain, p.is_private, p.schema_type, p.extracted_at,
-                bm25(product_fts, 10.0, 2.0, 1.0) AS score
+                (bm25(product_fts, 10.0, 2.0, 1.0) - (
+                    COALESCE((SELECT vote * 2.0 FROM result_feedback WHERE url = p.url AND query = ? AND feedback_type = 'relevance_vote'), 0) +
+                    COALESCE((SELECT SUM(vote) * 0.5 FROM result_feedback WHERE url = p.url AND feedback_type = 'relevance_vote'), 0) +
+                    COALESCE((SELECT SUM(vote) * 5.0 FROM result_feedback WHERE url = p.url AND feedback_type = 'product_vote'), 0)
+                )) AS score,
+                (SELECT COUNT(*) FROM result_feedback WHERE url = p.url AND feedback_type = 'relevance_vote' AND vote = 1) AS upvotes,
+                (SELECT COUNT(*) FROM result_feedback WHERE url = p.url AND feedback_type = 'relevance_vote' AND vote = -1) AS downvotes,
+                (SELECT COUNT(*) FROM result_feedback WHERE url = p.url AND feedback_type = 'product_vote' AND vote = 1) AS product_plus,
+                (SELECT COUNT(*) FROM result_feedback WHERE url = p.url AND feedback_type = 'product_vote' AND vote = -1) AS product_minus
             FROM product_fts f
             JOIN product_index p ON p.url = f.url
             WHERE product_fts MATCH ?
@@ -913,6 +956,10 @@ async def search_products(
                 "schema_type":  row["schema_type"],
                 "extracted_at": row["extracted_at"],
                 "score":        round(-row["score"], 4),
+                "upvotes":      row["upvotes"],
+                "downvotes":    row["downvotes"],
+                "product_plus":  row["product_plus"],
+                "product_minus": row["product_minus"],
             }
             for row in rows
         ]
@@ -930,6 +977,33 @@ async def search_products(
     except Exception as exc:
         logger.warning("[API] Product search error for %r: %s", q, exc)
         raise HTTPException(status_code=400, detail=f"Product search error: {exc}")
+
+
+@app.post("/api/feedback", tags=["Search"])
+async def submit_search_feedback(payload: FeedbackPayload):
+    """
+    Submits user feedback (upvote/downvote/product identification) for a result.
+    Applies bias adjustments to subsequent search relevance calculations.
+    """
+    if payload.feedback_type not in ("relevance_vote", "product_vote"):
+        raise HTTPException(status_code=400, detail="Invalid feedback type")
+    if payload.vote not in (1, -1):
+        raise HTTPException(status_code=400, detail="Vote must be 1 or -1")
+    
+    conn = get_db()
+    try:
+        submit_feedback(
+            conn=conn,
+            url=payload.url,
+            query=payload.query.strip(),
+            feedback_type=payload.feedback_type,
+            vote=payload.vote,
+        )
+        conn.commit()
+        return ok({"submitted": True})
+    except Exception as exc:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 # ---------------------------------------------------------------------------

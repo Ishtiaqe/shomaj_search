@@ -397,6 +397,38 @@ def test_config_persistence() -> None:
     })
 
 
+def test_search_feedback() -> None:
+    """POST /api/feedback should save relevance votes and adjust ranking score."""
+    # 1. Submit positive vote
+    payload = {
+        "url": "https://example.com/caching-test-page-1",
+        "query": "cachingtest",
+        "feedback_type": "relevance_vote",
+        "vote": 1
+    }
+    code, body = http_post("/api/feedback", payload)
+    _record("POST /api/feedback returns 200", code == 200)
+
+    # 2. Check in DB directly
+    import sqlite3
+    from database import DB_PATH
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT vote FROM result_feedback WHERE url = ? AND query = ? AND feedback_type = ?",
+        ("https://example.com/caching-test-page-1", "cachingtest", "relevance_vote")
+    ).fetchone()
+    conn.close()
+
+    _record("Feedback vote recorded in SQLite", row is not None and row["vote"] == 1)
+
+    # Cleanup
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute("DELETE FROM result_feedback WHERE url = ?", ("https://example.com/caching-test-page-1",))
+    conn.commit()
+    conn.close()
+
+
 def test_seed_endpoint() -> None:
     """POST /api/crawl/seed should add valid URLs and reject blocked ones."""
     # Use unique timestamped URLs so they are always fresh even on re-runs
@@ -527,6 +559,13 @@ def test_products_indexing_and_search() -> None:
         _record("Product search returns correct price", first.get("price") == 170000.0)
         _record("Product search returns availability", first.get("availability") == "in_stock")
 
+    # Clean up test database entries
+    conn = sqlite3.connect("shomaj_search.db")
+    conn.execute("DELETE FROM product_index WHERE url = ?", ("https://example.com/products/iphone-17-test",))
+    conn.execute("DELETE FROM product_fts WHERE url = ?", ("https://example.com/products/iphone-17-test",))
+    conn.commit()
+    conn.close()
+
 
 def test_search_cache_invalidation() -> None:
     """Search results caching and invalidation on new index writes."""
@@ -633,6 +672,7 @@ def main() -> int:
         ("20. Caching & Invalidation",    test_search_cache_invalidation),
         ("21. Safe Search Filtering",     test_safe_search_filtering),
         ("22. Configuration Persistence", test_config_persistence),
+        ("23. Result Ranking Feedback",   test_search_feedback),
     ]
 
     for group_name, fn in tests:

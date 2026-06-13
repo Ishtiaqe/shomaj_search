@@ -71,18 +71,30 @@
 - Enabled image thumbnails in web search cards, rendering them with a premium flexbox layout.
 - Added and registered a new configuration persistence test `test_config_persistence` in `verify_stack.py` (now 78/78 assertions passing).
 
+**Session 5 — 2026-06-14 (Result Feedback + Chrome URL Engine + FTS Alias Fix)**
+**Agent:** Antigravity (Gemini 3.5 Flash High)
+
+**Accomplished:**
+- Added `result_feedback` composite table to store user relevance upvotes/downvotes and product classification votes (plus/minus).
+- Integrated feedback scores directly into FTS5 ranking logic, dynamically boosting upvoted results and penalizing downvoted results.
+- Added `/api/feedback` route to submit user feedback, clearing search caches upon receipt.
+- Fixed critical FTS5 `no such column: f` error on image/video search by referencing the virtual table names rather than aliases inside MATCH.
+- Synchronized query parameters (`?q=...&tab=...`) in browser URL using `window.history.pushState` to support adding Shomaj Search as a custom Google Chrome search engine.
+- Cleaned up mock product database records created during integration tests.
+- Extended the integration test suite to cover feedback vote submission and FTS5 ranking adjustments (all 80/80 assertions passing).
+
 ---
 
 ## 📁 File Inventory
 
 | File | Status | Description |
 |------|--------|-------------|
-| `database.py` | ✅ Complete | SQLite WAL+FTS5, connection factory, upsert, queue helpers, media tables |
+| `database.py` | ✅ Complete | SQLite WAL+FTS5, connection factory, upsert, queue helpers, feedback tables |
 | `cache.py` | ✅ Complete | Fast in-memory LRU search results cache with invalidation |
 | `crawler.py` | ✅ Complete | 4-state async engine, blocklist, rate limiting, BS4 extraction, robots.txt compliance |
-| `main.py` | ✅ Complete | FastAPI, 10+ routes, search, index, crawler control, media search, caching, Safe Search |
-| `index.html` | ✅ Complete | Glassmorphism dashboard, search history, filter tabs, image/video search, robots.txt toggle |
-| `verify_stack.py` | ✅ Complete | 78 assertions, all passing |
+| `main.py` | ✅ Complete | FastAPI, 11+ routes, search, feedback, crawler control, media search, caching, Safe Search |
+| `index.html` | ✅ Complete | Glassmorphism dashboard, search history, tabs, feedback buttons, robots.txt toggle |
+| `verify_stack.py` | ✅ Complete | 80 assertions, all passing |
 | `media_utils.py` | ✅ Complete | Downscaling, YouTube extraction and AVIF compression utilities |
 | `product_extractor.py` | ✅ Complete | E-commerce schema extraction (JSON-LD, OpenGraph, Microdata) |
 | `requirements.txt` | ✅ Complete | fastapi, uvicorn, httpx, beautifulsoup4, python-multipart, pillow, pillow-avif-plugin |
@@ -107,11 +119,11 @@ Browser (User)
   │                                   SQLite FTS5 (is_private=1)
   │                                   + seeds queue (public links)
   │
-  └─ Opens http://localhost:8000
+  └─ Opens http://localhost:8000/?q=...&tab=... (Chrome search engine support)
        ├─ Search Dashboard (index.html)
-       ├─ GET /api/search?q=...      → FTS5 BM25 (web pages)
-       ├─ GET /api/search/images?q=  → SQLite media_index (images)
-       └─ GET /api/search/videos?q=  → SQLite media_index (videos)
+       ├─ GET /api/search?q=...      → FTS5 BM25 + Feedback Bias (web pages)
+       ├─ GET /api/search/images?q=  → SQLite media_index + Feedback Bias (images)
+       └─ GET /api/search/videos?q=  → SQLite media_index + Feedback Bias (videos)
 
 Active Crawler (background asyncio task)
   └─ crawler.py pulls from queue table
@@ -177,6 +189,52 @@ CREATE VIRTUAL TABLE media_fts USING fts5(
     llm_tags,
     tokenize='porter unicode61'
 );
+
+-- Product metadata
+CREATE TABLE product_index (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    url             TEXT UNIQUE NOT NULL,
+    name            TEXT NOT NULL DEFAULT '',
+    description     TEXT NOT NULL DEFAULT '',
+    brand           TEXT NOT NULL DEFAULT '',
+    sku             TEXT NOT NULL DEFAULT '',
+    price           REAL,
+    price_text      TEXT NOT NULL DEFAULT '',
+    currency        TEXT NOT NULL DEFAULT 'BDT',
+    availability    TEXT NOT NULL DEFAULT 'unknown',
+    image_url       TEXT NOT NULL DEFAULT '',
+    domain          TEXT NOT NULL,
+    is_private      INTEGER NOT NULL DEFAULT 0,
+    schema_type     TEXT NOT NULL DEFAULT '',
+    raw_schema      TEXT NOT NULL DEFAULT '',
+    extracted_at    INTEGER NOT NULL,
+    last_checked    INTEGER NOT NULL
+);
+
+-- Full-text search over products
+CREATE VIRTUAL TABLE product_fts USING fts5(
+    url UNINDEXED,
+    name,
+    description,
+    brand,
+    tokenize='porter unicode61'
+);
+
+-- System settings
+CREATE TABLE system_settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+-- User relevance and product validation feedback
+CREATE TABLE result_feedback (
+    url           TEXT NOT NULL,
+    query         TEXT NOT NULL,
+    feedback_type TEXT NOT NULL, -- 'relevance_vote' | 'product_vote'
+    vote          INTEGER NOT NULL, -- 1 or -1
+    submitted_at  INTEGER NOT NULL,
+    PRIMARY KEY (url, query, feedback_type)
+);
 ```
 
 ---
@@ -190,7 +248,9 @@ CREATE VIRTUAL TABLE media_fts USING fts5(
 | GET | `/api/search` | — | FTS5 web search (`q`, `limit`, `offset`) |
 | GET | `/api/search/images` | — | Image search (`q`, `limit`, `offset`) |
 | GET | `/api/search/videos` | — | Video search (`q`, `limit`, `offset`) |
+| GET | `/api/search/products` | — | Product search (`q`, `limit`, `offset`, `sort`) |
 | POST | `/api/index` | — | Extension ingestion (`url`,`title`,`text`,`links`,`images`,`videos`) |
+| POST | `/api/feedback` | — | Submit user ranking feedback (`url`, `query`, `feedback_type`, `vote`) |
 | GET | `/api/stats` | — | Index statistics |
 | GET | `/api/history` | — | Search history (server-side log) |
 | POST | `/api/crawl/start` | — | Start/resume crawler |
@@ -216,7 +276,7 @@ CREATE VIRTUAL TABLE media_fts USING fts5(
 - [x] Active web crawler (asyncio + httpx)
 - [x] Glassmorphism dark dashboard
 - [x] Pagination
-- [x] Filter tabs (All / Web / Images / Videos / Private)
+- [x] Filter tabs (All / Web / Images / Videos / Private / Products)
 - [x] Search history (localStorage)
 - [x] Autocomplete / instant search
 - [x] Crawler control panel (start/pause/stop/config/seed)

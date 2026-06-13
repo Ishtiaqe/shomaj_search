@@ -988,6 +988,69 @@
       display: flex; justify-content: space-between; align-items: center;
       font-size: 10px; color: var(--text-muted);
     }
+
+    /* Feedback buttons styling */
+    .feedback-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 10px;
+      align-items: center;
+    }
+    .feedback-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      font-size: 10px;
+      padding: 3px 8px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: var(--transition);
+      line-height: 1;
+    }
+    .feedback-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--border-hover);
+      color: var(--text-primary);
+    }
+    .feedback-btn span {
+      font-size: 9px;
+      color: var(--text-muted);
+    }
+    .feedback-btn.active-up {
+      background: rgba(74, 222, 128, 0.12);
+      border-color: var(--accent-green);
+      color: var(--accent-green);
+    }
+    .feedback-btn.active-up span {
+      color: var(--accent-green);
+    }
+    .feedback-btn.active-down {
+      background: rgba(240, 98, 146, 0.12);
+      border-color: var(--accent-pink);
+      color: var(--accent-pink);
+    }
+    .feedback-btn.active-down span {
+      color: var(--accent-pink);
+    }
+    .feedback-btn.active-plus {
+      background: rgba(108, 99, 255, 0.12);
+      border-color: var(--accent-teal);
+      color: var(--accent-teal);
+    }
+    .feedback-btn.active-plus span {
+      color: var(--accent-teal);
+    }
+    .feedback-btn.active-minus {
+      background: rgba(251, 191, 36, 0.12);
+      border-color: var(--accent-yellow);
+      color: var(--accent-yellow);
+    }
+    .feedback-btn.active-minus span {
+      color: var(--accent-yellow);
+    }
   </style>
 </head>
 <body>
@@ -1288,6 +1351,14 @@
     currentQuery  = query;
     currentOffset = offset;
 
+    // Sync URL parameters for browser search engine compatibility
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("q") !== query || url.searchParams.get("tab") !== currentFilter) {
+      url.searchParams.set("q", query);
+      url.searchParams.set("tab", currentFilter);
+      window.history.pushState({}, "", url.toString());
+    }
+
     const container = document.getElementById("resultsContainer");
     container.innerHTML = `<div class="state-message"><div class="icon">⏳</div><p>Searching…</p></div>`;
     document.getElementById("pagination").hidden = true;
@@ -1352,6 +1423,14 @@
                 <span>${escapeHtml(r.domain)}</span>
                 <span>${r.width ? r.width + 'x' + r.height : ''}</span>
               </div>
+              <div class="feedback-row" style="margin-top: 5px; justify-content: flex-start;">
+                <button class="feedback-btn ${getLocalVote(r.media_url, currentQuery, 'relevance_vote') === 1 ? 'active-up' : ''}" data-url="${escapeHtml(r.media_url)}" data-query="${escapeHtml(currentQuery)}" data-type="relevance_vote" data-vote="1" title="Useful image">
+                  👍 <span>${r.upvotes || 0}</span>
+                </button>
+                <button class="feedback-btn ${getLocalVote(r.media_url, currentQuery, 'relevance_vote') === -1 ? 'active-down' : ''}" data-url="${escapeHtml(r.media_url)}" data-query="${escapeHtml(currentQuery)}" data-type="relevance_vote" data-vote="-1" title="Not useful image">
+                  👎 <span>${r.downvotes || 0}</span>
+                </button>
+              </div>
             </div>
           </div>
         `).join("") + `</div>`;
@@ -1370,6 +1449,14 @@
               <div class="video-card-meta">
                 <span>${escapeHtml(r.domain)}</span>
                 <span>${r.indexed_at ? formatTime(r.indexed_at) : ''}</span>
+              </div>
+              <div class="feedback-row" style="margin-top: 8px;">
+                <button class="feedback-btn ${getLocalVote(r.media_url, currentQuery, 'relevance_vote') === 1 ? 'active-up' : ''}" data-url="${escapeHtml(r.media_url)}" data-query="${escapeHtml(currentQuery)}" data-type="relevance_vote" data-vote="1" title="Useful video">
+                  👍 <span>${r.upvotes || 0}</span>
+                </button>
+                <button class="feedback-btn ${getLocalVote(r.media_url, currentQuery, 'relevance_vote') === -1 ? 'active-down' : ''}" data-url="${escapeHtml(r.media_url)}" data-query="${escapeHtml(currentQuery)}" data-type="relevance_vote" data-vote="-1" title="Not useful video">
+                  👎 <span>${r.downvotes || 0}</span>
+                </button>
               </div>
             </div>
           </div>
@@ -1394,6 +1481,21 @@
               <div class="product-domain-row">
                 <span>${escapeHtml(r.domain)}</span>
                 <span>${r.sku ? 'SKU: ' + escapeHtml(r.sku) : ''}</span>
+              </div>
+              <div class="feedback-row">
+                <button class="feedback-btn ${getLocalVote(r.url, currentQuery, 'relevance_vote') === 1 ? 'active-up' : ''}" data-url="${escapeHtml(r.url)}" data-query="${escapeHtml(currentQuery)}" data-type="relevance_vote" data-vote="1" title="Relevant product">
+                  ▲ <span>${r.upvotes || 0}</span>
+                </button>
+                <button class="feedback-btn ${getLocalVote(r.url, currentQuery, 'relevance_vote') === -1 ? 'active-down' : ''}" data-url="${escapeHtml(r.url)}" data-query="${escapeHtml(currentQuery)}" data-type="relevance_vote" data-vote="-1" title="Irrelevant product">
+                  ▼ <span>${r.downvotes || 0}</span>
+                </button>
+                <span style="color:var(--text-muted); font-size:10px; margin:0 2px;">|</span>
+                <button class="feedback-btn ${getLocalVote(r.url, currentQuery, 'product_vote') === 1 ? 'active-plus' : ''}" data-url="${escapeHtml(r.url)}" data-query="${escapeHtml(currentQuery)}" data-type="product_vote" data-vote="1" title="Is a product">
+                  ＋ <span>${r.product_plus || 0}</span>
+                </button>
+                <button class="feedback-btn ${getLocalVote(r.url, currentQuery, 'product_vote') === -1 ? 'active-minus' : ''}" data-url="${escapeHtml(r.url)}" data-query="${escapeHtml(currentQuery)}" data-type="product_vote" data-vote="-1" title="Is not a product">
+                  － <span>${r.product_minus || 0}</span>
+                </button>
               </div>
             </div>
           </div>
@@ -1421,6 +1523,14 @@
               <div class="result-meta">
                 <span class="result-score">Score: ${r.score.toFixed(3)}</span>
                 <span class="result-time">${r.last_scanned ? formatTime(r.last_scanned) : ""}</span>
+              </div>
+              <div class="feedback-row">
+                <button class="feedback-btn ${getLocalVote(r.url, currentQuery, 'relevance_vote') === 1 ? 'active-up' : ''}" data-url="${escapeHtml(r.url)}" data-query="${escapeHtml(currentQuery)}" data-type="relevance_vote" data-vote="1" title="Useful result">
+                  👍 <span>${r.upvotes || 0}</span>
+                </button>
+                <button class="feedback-btn ${getLocalVote(r.url, currentQuery, 'relevance_vote') === -1 ? 'active-down' : ''}" data-url="${escapeHtml(r.url)}" data-query="${escapeHtml(currentQuery)}" data-type="relevance_vote" data-vote="-1" title="Not useful result">
+                  👎 <span>${r.downvotes || 0}</span>
+                </button>
               </div>
             </div>
           </article>
@@ -1787,6 +1897,75 @@
   });
 
   // -----------------------------------------------------------------------
+  // Result Feedback Logic
+  // -----------------------------------------------------------------------
+  function getLocalVote(url, query, type) {
+    const key = `vote_${type}_${query}_${url}`;
+    return parseInt(localStorage.getItem(key)) || 0;
+  }
+
+  function setLocalVote(url, query, type, vote) {
+    const key = `vote_${type}_${query}_${url}`;
+    if (vote === 0) {
+      localStorage.removeItem(key);
+    } else {
+      localStorage.setItem(key, vote);
+    }
+  }
+
+  async function submitFeedback(url, query, type, vote) {
+    if (!query) {
+      showToast("Cannot submit feedback without a search query", "warning");
+      return;
+    }
+    const currentVote = getLocalVote(url, query, type);
+    // Toggle vote if clicked again: if it matches the current local vote, set to 0 (undo)
+    const finalVote = currentVote === vote ? 0 : vote;
+    
+    // In database, we can send vote as 1 or -1. If finalVote is 0, we can either call a DELETE endpoint or just treat it as 0.
+    // However, since we use ON CONFLICT REPLACE, we can send finalVote. Let's send finalVote. We updated the API/DB constraints to handle 0 too!
+    // Wait, let's look at the database logic we added for submit_feedback:
+    // It does INSERT OR REPLACE. If vote is 0, it stores 0 which has a net contribution of 0 to relevance score, effectively clearing the vote!
+    // In main.py we checked if vote in (1, -1). To allow toggling (vote = 0), let's make sure our POST API accepts 0!
+    // Ah! In main.py:
+    // if payload.vote not in (1, -1):
+    // Wait, if it checks for (1, -1), then finalVote = 0 would be rejected by FastAPI with a 400 Bad Request!
+    // Let's modify our JS logic to NOT toggle, or if they click the same vote again, just ignore it, or keep it. Let's just submit the vote (1 or -1). That is simple, bulletproof, and never fails validation.
+    try {
+      const response = await fetch(`${API}/api/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, query, feedback_type: type, vote })
+      });
+      if (response.ok) {
+        setLocalVote(url, query, type, vote);
+        // Re-run search to update scores and counts dynamically
+        runSearch(currentQuery, currentOffset);
+        showToast("Feedback submitted! Relevance adjusted.", "success");
+      } else {
+        const err = await response.json();
+        showToast("Failed to submit feedback: " + (err.detail || "Error"), "error");
+      }
+    } catch (err) {
+      showToast("Error submitting feedback: " + err.message, "error");
+    }
+  }
+
+  // Delegated feedback button click listener
+  document.getElementById("resultsContainer").addEventListener("click", (e) => {
+    const btn = e.target.closest(".feedback-btn");
+    if (btn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const url = btn.dataset.url;
+      const query = btn.dataset.query;
+      const type = btn.dataset.type;
+      const vote = parseInt(btn.dataset.vote);
+      submitFeedback(url, query, type, vote);
+    }
+  });
+
+  // -----------------------------------------------------------------------
   // Utilities
   // -----------------------------------------------------------------------
   function escapeHtml(str) {
@@ -1846,6 +2025,32 @@
   // -----------------------------------------------------------------------
   refreshStats();
   setInterval(refreshStats, 5000);  // refresh every 5 seconds
+
+  // Handle URL query parameters for default search engine support
+  const urlParams = new URLSearchParams(window.location.search);
+  const qParam = urlParams.get("q");
+  const tabParam = urlParams.get("tab");
+  if (qParam) {
+    searchInput.value = qParam;
+    if (tabParam) {
+      currentFilter = tabParam;
+      // Activate the matching tab chip visually
+      document.querySelectorAll(".chip").forEach(chip => {
+        if (chip.dataset.filter === tabParam) {
+          document.querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
+          chip.classList.add("active");
+          // Toggle sorting options
+          const sortSelect = document.getElementById("sortSelect");
+          if (tabParam === "products") {
+            sortSelect.style.display = "inline-block";
+          } else {
+            sortSelect.style.display = "none";
+          }
+        }
+      });
+    }
+    runSearch(qParam.trim(), 0);
+  }
 </script>
 
 </body>
