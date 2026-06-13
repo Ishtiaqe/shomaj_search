@@ -63,6 +63,12 @@ function sanitisePayload(payload) {
     links: Array.isArray(payload.links)
       ? payload.links.filter((l) => typeof l === "string").slice(0, 500)
       : [],
+    images: Array.isArray(payload.images)
+      ? payload.images.filter((img) => img && typeof img.url === "string").slice(0, 100)
+      : [],
+    videos: Array.isArray(payload.videos)
+      ? payload.videos.filter((vid) => vid && typeof vid.url === "string").slice(0, 20)
+      : [],
   };
 }
 

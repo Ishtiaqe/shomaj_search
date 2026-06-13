@@ -20,8 +20,10 @@ from pydantic import BaseModel, Field, field_validator
 from crawler import CrawlerState, engine
 from database import (
     enqueue_url, get_db, init_db, upsert_index,
-    upsert_media, log_search_history,
+    upsert_media, log_search_history, upsert_product,
+    upsert_managed_domain, get_domain_config, get_all_domains,
 )
+from cache import search_cache
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -101,24 +103,34 @@ class IndexPayload(BaseModel):
 
 class CrawlConfigPayload(BaseModel):
     """Runtime configuration update for the active crawler."""
-    delay_seconds: Optional[float] = Field(None, ge=0.0, le=60.0)
-    max_depth:     Optional[int]   = Field(None, ge=0, le=10)
-
-    @field_validator("delay_seconds", mode="before")
-    @classmethod
-    def coerce_delay(cls, v):
-        return float(v) if v is not None else None
-
-    @field_validator("max_depth", mode="before")
-    @classmethod
-    def coerce_depth(cls, v):
-        return int(v) if v is not None else None
+    # Pacing
+    delay_seconds:  Optional[float] = Field(None, ge=0.0,  le=60.0,  description="Seconds between requests per domain")
+    max_depth:      Optional[int]   = Field(None, ge=0,    le=20,    description="Max hop depth from seed")
+    request_timeout: Optional[float]= Field(None, ge=5.0,  le=120.0, description="HTTP timeout in seconds")
+    max_content_mb: Optional[float] = Field(None, ge=0.5,  le=50.0,  description="Max response size in MB")
+    # Concurrency
+    concurrent_workers: Optional[int] = Field(None, ge=1, le=20,    description="Number of parallel workers")
+    # Behaviour
+    follow_sitemaps:    Optional[bool] = Field(None, description="Auto-discover and parse sitemap.xml")
+    extract_products:   Optional[bool] = Field(None, description="Extract structured product data")
+    max_pages_per_domain: Optional[int]= Field(None, ge=0, description="0 = unlimited")
+    retry_failed:       Optional[bool] = Field(None, description="Re-queue previously failed URLs")
+    respect_robots_txt:  Optional[bool] = Field(None, description="Comply with robots.txt Disallow rules")
 
 
 class SeedPayload(BaseModel):
     """Seed one or more URLs into the crawler queue."""
     urls:  list[str] = Field(..., min_length=1)
     depth: int       = Field(0, ge=0, le=10)
+
+
+class DomainConfigPayload(BaseModel):
+    """Create or update a domain's managed configuration."""
+    is_public:     int   = Field(1, ge=0, le=1,  description="1=public (crawlable), 0=private")
+    crawl_enabled: int   = Field(1, ge=0, le=1,  description="1=allow active crawler")
+    priority:      int   = Field(5, ge=1, le=10, description="Crawl priority 1-10")
+    sitemap_url:   str   = Field("",             description="Override sitemap URL")
+    notes:         str   = Field("",             description="Human-readable notes")
 
 
 # ---------------------------------------------------------------------------
@@ -175,15 +187,11 @@ async def crawl_config(payload: CrawlConfigPayload):
     """
     Dynamically updates crawler configuration at runtime.
     Changes take effect on the next crawler iteration — no restart required.
+    All parameters are optional; only provided ones are changed.
     """
-    engine.config.update(
-        delay_seconds=payload.delay_seconds,
-        max_depth=payload.max_depth,
-    )
-    return ok({
-        "delay_seconds": engine.config.delay_seconds,
-        "max_depth":     engine.config.max_depth,
-    })
+    engine.config.update(**payload.model_dump(exclude_none=True))
+    await engine.adjust_workers()
+    return ok(engine.config.to_dict())
 
 
 @app.get("/api/crawl/status", tags=["Crawler Control"])
@@ -346,6 +354,7 @@ async def search(
     offset: int = Query(0,   ge=0,           description="Pagination offset"),
     private_only: bool = Query(False, description="Only return private (extension-indexed) pages"),
     domain: str = Query("",  description="Filter by domain (site: operator)"),
+    safe_search: bool = Query(True, description="Filter adult/NSFW content"),
 ):
     """
     Full-text search using SQLite FTS5 MATCH with native bm25() scoring.
@@ -354,11 +363,22 @@ async def search(
     Supports domain filtering and private-only toggle.
     Search queries are logged to search_history.
     """
-    if not q.strip():
+    q_clean = q.strip()
+    if not q_clean:
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
-    terms = q.strip().split()
+    # Cache lookup
+    cache_key = ("web", q_clean, limit, offset, private_only, domain.strip(), safe_search)
+    cached_res = search_cache.get(cache_key)
+    if cached_res is not None:
+        return cached_res
+
+    terms = q_clean.split()
     fts_query = " AND ".join(f'"{re.sub(chr(34), "", t)}"' for t in terms)
+
+    if safe_search:
+        exclude_terms = ["porn", "xxx", "sex", "naked", "nude", "adult", "pornography", "erotic", "nsfw", "milf", "ebony"]
+        fts_query = f"({fts_query}) " + " ".join(f'NOT "{w}"' for w in exclude_terms)
 
     conn = get_db()
 
@@ -370,6 +390,8 @@ async def search(
     if domain.strip():
         meta_filters.append("m.domain = ?")
         meta_params.append(domain.strip().lstrip("www."))
+    if safe_search:
+        meta_filters.append("m.url NOT LIKE '%porn%' AND m.url NOT LIKE '%sex%' AND m.url NOT LIKE '%xxx%'")
 
     meta_where = ("AND " + " AND ".join(meta_filters)) if meta_filters else ""
 
@@ -420,12 +442,12 @@ async def search(
 
         # Log to server-side search history
         try:
-            log_search_history(conn, q.strip(), total_hits)
+            log_search_history(conn, q_clean, total_hits)
             conn.commit()
         except Exception:
             pass  # history logging must never break the search response
 
-        return ok({
+        response_data = ok({
             "query":        q,
             "fts_query":    fts_query,
             "total_hits":   total_hits,
@@ -433,6 +455,8 @@ async def search(
             "offset":       offset,
             "results":      results,
         })
+        search_cache.set(cache_key, response_data)
+        return response_data
 
     except Exception as exc:
         logger.warning("[API] Search error for %r: %s", q, exc)
@@ -449,21 +473,41 @@ async def search_images(
     limit:  int = Query(24, ge=1, le=100),
     offset: int = Query(0,  ge=0),
     domain: str = Query("", description="Filter by source domain"),
+    safe_search: bool = Query(True, description="Filter adult/NSFW content"),
 ):
     """
     Searches image metadata using FTS5 over title, description, and
     future LLM-generated tags/descriptions.
     Returns image URL, thumbnail, dimensions, and source page.
     """
-    terms     = q.strip().split()
+    q_clean = q.strip()
+    if not q_clean:
+        raise HTTPException(status_code=400, detail="Query cannot be empty.")
+
+    cache_key = ("images", q_clean, limit, offset, domain.strip(), safe_search)
+    cached_res = search_cache.get(cache_key)
+    if cached_res is not None:
+        return cached_res
+
+    terms     = q_clean.split()
     fts_query = " AND ".join(f'"{re.sub(chr(34), "", t)}"' for t in terms)
+
+    if safe_search:
+        exclude_terms = ["porn", "xxx", "sex", "naked", "nude", "adult", "pornography", "erotic", "nsfw", "milf", "ebony"]
+        fts_query = f"({fts_query}) " + " ".join(f'NOT "{w}"' for w in exclude_terms)
+
     conn      = get_db()
 
-    domain_filter = "AND m.domain = ?" if domain.strip() else ""
+    extra_filters = []
     params        = [fts_query]
+
     if domain.strip():
+        extra_filters.append("m.domain = ?")
         params.append(domain.strip().lstrip("www."))
-    params.extend([limit, offset])
+    if safe_search:
+        extra_filters.append("m.media_url NOT LIKE '%porn%' AND m.media_url NOT LIKE '%sex%' AND m.media_url NOT LIKE '%xxx%'")
+
+    extra_where = ("AND " + " AND ".join(extra_filters)) if extra_filters else ""
 
     try:
         rows = conn.execute(
@@ -476,18 +520,18 @@ async def search_images(
             FROM media_fts f
             JOIN media_index m ON m.media_url = f.media_url
             WHERE f MATCH ? AND m.media_type = 'image'
-            {domain_filter}
+            {extra_where}
             ORDER BY rank
             LIMIT ? OFFSET ?
             """,
-            params,
+            params + [limit, offset],
         ).fetchall()
 
         total = conn.execute(
             f"""SELECT COUNT(*) AS cnt FROM media_fts f
                 JOIN media_index m ON m.media_url = f.media_url
-                WHERE f MATCH ? AND m.media_type = 'image' {domain_filter}""",
-            [fts_query] + ([domain.strip().lstrip("www.")] if domain.strip() else []),
+                WHERE f MATCH ? AND m.media_type = 'image' {extra_where}""",
+            [fts_query] + params[1:],
         ).fetchone()["cnt"]
 
         results = [
@@ -508,8 +552,10 @@ async def search_images(
             }
             for row in rows
         ]
-        return ok({"query": q, "total_hits": total, "returned": len(results),
-                   "offset": offset, "results": results})
+        response_data = ok({"query": q, "total_hits": total, "returned": len(results),
+                           "offset": offset, "results": results})
+        search_cache.set(cache_key, response_data)
+        return response_data
 
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Image search error: {exc}")
@@ -523,14 +569,29 @@ async def search_videos(
     domain: str  = Query("", description="Filter by source domain"),
     min_duration: float = Query(0.0, ge=0.0, description="Minimum duration in seconds"),
     max_duration: float = Query(0.0, ge=0.0, description="Maximum duration in seconds (0=any)"),
+    safe_search: bool = Query(True, description="Filter adult/NSFW content"),
 ):
     """
     Searches video metadata using FTS5 over title, description, and
     future LLM-generated tags.
     Returns video URL, thumbnail, duration, and source page.
     """
-    terms     = q.strip().split()
+    q_clean = q.strip()
+    if not q_clean:
+        raise HTTPException(status_code=400, detail="Query cannot be empty.")
+
+    cache_key = ("videos", q_clean, limit, offset, domain.strip(), min_duration, max_duration, safe_search)
+    cached_res = search_cache.get(cache_key)
+    if cached_res is not None:
+        return cached_res
+
+    terms     = q_clean.split()
     fts_query = " AND ".join(f'"{re.sub(chr(34), "", t)}"' for t in terms)
+
+    if safe_search:
+        exclude_terms = ["porn", "xxx", "sex", "naked", "nude", "adult", "pornography", "erotic", "nsfw", "milf", "ebony"]
+        fts_query = f"({fts_query}) " + " ".join(f'NOT "{w}"' for w in exclude_terms)
+
     conn      = get_db()
 
     extra_filters = []
@@ -544,6 +605,8 @@ async def search_videos(
     if max_duration > 0:
         extra_filters.append("m.duration_seconds <= ?")
         extra_params.append(max_duration)
+    if safe_search:
+        extra_filters.append("m.media_url NOT LIKE '%porn%' AND m.media_url NOT LIKE '%sex%' AND m.media_url NOT LIKE '%xxx%'")
 
     extra_where = ("AND " + " AND ".join(extra_filters)) if extra_filters else ""
 
@@ -591,8 +654,10 @@ async def search_videos(
             }
             for row in rows
         ]
-        return ok({"query": q, "total_hits": total, "returned": len(results),
-                   "offset": offset, "results": results})
+        response_data = ok({"query": q, "total_hits": total, "returned": len(results),
+                           "offset": offset, "results": results})
+        search_cache.set(cache_key, response_data)
+        return response_data
 
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Video search error: {exc}")
@@ -685,6 +750,173 @@ async def stats():
         "videos_indexed":  total_videos,
         "top_domains":     [{"domain": r["domain"], "count": r["cnt"]} for r in top_domains],
     })
+
+
+@app.get("/api/domains", tags=["Domains"])
+async def get_domains():
+    """
+    Returns all known domains, their page counts, and their crawl configuration settings.
+    """
+    conn = get_db()
+    domains = get_all_domains(conn)
+    return ok(domains)
+
+
+@app.post("/api/domains/{domain}", tags=["Domains"])
+async def configure_domain(domain: str, payload: DomainConfigPayload):
+    """
+    Configures public/private status and crawler settings for a domain.
+    """
+    conn = get_db()
+    dom = domain.strip().lower().lstrip("www.")
+    if not dom:
+        raise HTTPException(status_code=400, detail="Invalid domain")
+    
+    upsert_managed_domain(
+        conn=conn,
+        domain=dom,
+        is_public=payload.is_public,
+        crawl_enabled=payload.crawl_enabled,
+        priority=payload.priority,
+        sitemap_url=payload.sitemap_url,
+        notes=payload.notes,
+    )
+    conn.commit()
+    return ok({"domain": dom, "is_public": payload.is_public, "crawl_enabled": payload.crawl_enabled})
+
+
+@app.get("/api/search/products", tags=["Search"])
+async def search_products(
+    q:                str  = Query(..., min_length=1, max_length=500),
+    limit:            int  = Query(20, ge=1, le=100),
+    offset:           int  = Query(0, ge=0),
+    sort:             str  = Query("relevance", description="relevance | price_asc | price_desc"),
+    prioritize_stock: bool = Query(True, description="Prioritize ready stock (in_stock first)"),
+    domain:           str  = Query("", description="Filter by source domain"),
+    safe_search:      bool = Query(True, description="Filter adult/NSFW content"),
+):
+    """
+    Searches products index using FTS5 over name, description, brand.
+    Allows sorting by price or relevance, and prioritizing stock availability.
+    """
+    q_clean = q.strip()
+    if not q_clean:
+        raise HTTPException(status_code=400, detail="Query cannot be empty.")
+
+    cache_key = ("products", q_clean, limit, offset, sort, prioritize_stock, domain.strip(), safe_search)
+    cached_res = search_cache.get(cache_key)
+    if cached_res is not None:
+        return cached_res
+
+    terms     = q_clean.split()
+    fts_query = " AND ".join(f'"{re.sub(chr(34), "", t)}"' for t in terms)
+
+    if safe_search:
+        exclude_terms = ["porn", "xxx", "sex", "naked", "nude", "adult", "pornography", "erotic", "nsfw", "milf", "ebony"]
+        fts_query = f"({fts_query}) " + " ".join(f'NOT "{w}"' for w in exclude_terms)
+
+    conn      = get_db()
+
+    extra_filters = []
+    extra_params  = [fts_query]
+
+    if domain.strip():
+        extra_filters.append("p.domain = ?")
+        extra_params.append(domain.strip().lstrip("www."))
+    if safe_search:
+        extra_filters.append("p.url NOT LIKE '%porn%' AND p.url NOT LIKE '%sex%' AND p.url NOT LIKE '%xxx%'")
+
+    extra_where = ("AND " + " AND ".join(extra_filters)) if extra_filters else ""
+
+    # Sort criteria
+    sort_clauses = []
+    
+    if prioritize_stock:
+        sort_clauses.append("""
+            CASE p.availability
+                WHEN 'in_stock' THEN 0
+                WHEN 'preorder' THEN 1
+                WHEN 'out_of_stock' THEN 2
+                WHEN 'discontinued' THEN 3
+                ELSE 4
+            END ASC
+        """)
+    
+    if sort == "price_asc":
+        sort_clauses.append("CASE WHEN p.price IS NULL THEN 1 ELSE 0 END ASC")
+        sort_clauses.append("p.price ASC")
+    elif sort == "price_desc":
+        sort_clauses.append("CASE WHEN p.price IS NULL THEN 1 ELSE 0 END ASC")
+        sort_clauses.append("p.price DESC")
+    else:  # relevance
+        sort_clauses.append("score ASC")
+
+    order_by_clause = "ORDER BY " + ", ".join(sort_clauses)
+
+    try:
+        select_params = extra_params + [limit, offset]
+        rows = conn.execute(
+            f"""
+            SELECT
+                p.url, p.name, p.description, p.brand, p.sku, p.price,
+                p.price_text, p.currency, p.availability, p.image_url,
+                p.domain, p.is_private, p.schema_type, p.extracted_at,
+                bm25(product_fts) AS score
+            FROM product_fts f
+            JOIN product_index p ON p.url = f.url
+            WHERE product_fts MATCH ?
+            {extra_where}
+            {order_by_clause}
+            LIMIT ? OFFSET ?
+            """,
+            select_params,
+        ).fetchall()
+
+        total = conn.execute(
+            f"""
+            SELECT COUNT(*) AS cnt
+            FROM product_fts f
+            JOIN product_index p ON p.url = f.url
+            WHERE product_fts MATCH ?
+            {extra_where}
+            """,
+            [fts_query] + extra_params[1:],
+        ).fetchone()["cnt"]
+
+        results = [
+            {
+                "url":          row["url"],
+                "name":         row["name"],
+                "description":  row["description"],
+                "brand":        row["brand"],
+                "sku":          row["sku"],
+                "price":        row["price"],
+                "price_text":   row["price_text"],
+                "currency":     row["currency"],
+                "availability": row["availability"],
+                "image_url":    row["image_url"],
+                "domain":       row["domain"],
+                "is_private":   bool(row["is_private"]),
+                "schema_type":  row["schema_type"],
+                "extracted_at": row["extracted_at"],
+                "score":        round(-row["score"], 4),
+            }
+            for row in rows
+        ]
+
+        response_data = ok({
+            "query":        q,
+            "total_hits":   total,
+            "returned":     len(results),
+            "offset":       offset,
+            "results":      results,
+        })
+        search_cache.set(cache_key, response_data)
+        return response_data
+
+    except Exception as exc:
+        logger.warning("[API] Product search error for %r: %s", q, exc)
+        raise HTTPException(status_code=400, detail=f"Product search error: {exc}")
 
 
 # ---------------------------------------------------------------------------

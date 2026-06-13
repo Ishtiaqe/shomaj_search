@@ -735,6 +735,232 @@
       text-decoration: none;
     }
     .footer a:hover { text-decoration: underline; }
+
+    /* =====================================================================
+       Modals
+       ===================================================================== */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(8, 11, 20, 0.85);
+      backdrop-filter: blur(8px);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+    .modal-overlay.active {
+      opacity: 1; pointer-events: auto;
+    }
+    .modal-content {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      width: 90%; max-width: 820px;
+      max-height: 85vh;
+      overflow-y: auto;
+      padding: 24px;
+      position: relative;
+      box-shadow: var(--glow-violet), 0 10px 40px rgba(0,0,0,0.5);
+      animation: modalIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    @keyframes modalIn {
+      from { transform: translateY(20px) scale(0.97); }
+      to   { transform: translateY(0) scale(1); }
+    }
+    .modal-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+    }
+    .modal-title { font-size: 16px; font-weight: 700; color: var(--accent-teal); text-transform: uppercase; letter-spacing: 1px; }
+    .modal-close {
+      background: transparent; border: none; font-size: 24px; color: var(--text-secondary);
+      cursor: pointer; transition: var(--transition);
+      line-height: 1;
+    }
+    .modal-close:hover { color: var(--accent-pink); }
+    
+    /* Domain Table */
+    .domain-table {
+      width: 100%; border-collapse: collapse; margin-top: 12px;
+      font-size: 12px;
+    }
+    .domain-table th, .domain-table td {
+      padding: 10px 8px; text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .domain-table th {
+      color: var(--text-muted); text-transform: uppercase; font-size: 10px; letter-spacing: 1px;
+    }
+    .domain-table td { color: var(--text-secondary); }
+    .domain-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+    .toggle-btn {
+      padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; cursor: pointer;
+      border: 1px solid var(--border); background: transparent; color: var(--text-secondary);
+      transition: var(--transition);
+      display: inline-block; text-align: center; width: 85px;
+    }
+    .toggle-btn.active-public { background: rgba(62,207,207,0.1); color: var(--accent-teal); border-color: rgba(62,207,207,0.3); }
+    .toggle-btn.active-private { background: rgba(240,98,146,0.1); color: var(--accent-pink); border-color: rgba(240,98,146,0.3); }
+    .toggle-btn.active-enabled { background: rgba(74,222,128,0.1); color: var(--accent-green); border-color: rgba(74,222,128,0.3); }
+    .toggle-btn.active-disabled { background: rgba(255,255,255,0.02); color: var(--text-muted); border-color: var(--border); }
+
+    /* =====================================================================
+       Gallery Grid (Images)
+       ===================================================================== */
+    .image-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+      gap: 16px; margin-top: 12px;
+    }
+    .image-card {
+      background: var(--bg-glass);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      transition: var(--transition);
+      cursor: pointer;
+    }
+    .image-card:hover {
+      border-color: var(--border-hover);
+      transform: translateY(-4px);
+      box-shadow: 0 8px 24px rgba(108,99,255,0.15);
+    }
+    .image-wrapper {
+      width: 100%; height: 130px; background: rgba(0,0,0,0.3);
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+    }
+    .image-wrapper img {
+      max-width: 100%; max-height: 100%; object-fit: cover;
+      transition: transform 0.3s ease;
+    }
+    .image-card:hover .image-wrapper img { transform: scale(1.04); }
+    .image-info { padding: 8px 12px; }
+    .image-title {
+      font-size: 12px; font-weight: 600; color: var(--text-primary);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .image-meta {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: 4px; font-size: 10px; color: var(--text-muted);
+    }
+
+    /* =====================================================================
+       Video Grid (Videos)
+       ===================================================================== */
+    .video-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px; margin-top: 12px;
+    }
+    .video-card {
+      background: var(--bg-glass);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      transition: var(--transition);
+    }
+    .video-card:hover {
+      border-color: var(--border-hover);
+      transform: translateY(-4px);
+      box-shadow: 0 8px 24px rgba(62,207,207,0.15);
+    }
+    .video-thumbnail-wrapper {
+      width: 100%; height: 125px; background: #000; position: relative;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+    }
+    .video-thumbnail-wrapper img {
+      width: 100%; height: 100%; object-fit: cover;
+    }
+    .video-duration {
+      position: absolute; bottom: 6px; right: 6px;
+      background: rgba(0,0,0,0.85); color: #fff; font-family: var(--font-mono);
+      font-size: 9px; padding: 2px 5px; border-radius: 3px; font-weight: 500;
+    }
+    .video-play-btn {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      width: 40px; height: 40px; background: rgba(108,99,255,0.8);
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-size: 16px; color: #fff; opacity: 0.8; transition: var(--transition);
+    }
+    .video-card:hover .video-play-btn { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+    .video-card-info { padding: 10px 12px; }
+    .video-card-title {
+      font-size: 13px; font-weight: 600; color: var(--text-primary);
+      line-height: 1.4; margin-bottom: 4px; text-decoration: none;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .video-card-title:hover { color: var(--accent-teal); }
+    .video-card-meta {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 10px; color: var(--text-muted);
+    }
+
+    /* =====================================================================
+       Product Grid (Products)
+       ===================================================================== */
+    .product-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px; margin-top: 12px;
+    }
+    .product-card {
+      background: var(--bg-glass);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 14px; display: flex; gap: 14px;
+      transition: var(--transition);
+      align-items: center;
+    }
+    .product-card:hover {
+      border-color: var(--border-hover);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(108,99,255,0.15);
+    }
+    .product-img-wrapper {
+      width: 75px; height: 75px; border-radius: var(--radius-sm);
+      background: rgba(255,255,255,0.03); display: flex; align-items: center; justify-content: center;
+      overflow: hidden; flex-shrink: 0; border: 1px solid var(--border);
+    }
+    .product-img-wrapper img {
+      max-width: 90%; max-height: 90%; object-fit: contain;
+    }
+    .product-details {
+      flex-grow: 1; min-width: 0;
+    }
+    .product-brand {
+      font-size: 9px; font-weight: 700; color: var(--accent-teal);
+      text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 2px;
+    }
+    .product-name {
+      font-size: 13px; font-weight: 600; color: var(--text-primary);
+      text-decoration: none; display: block; margin-bottom: 4px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .product-name:hover { color: var(--accent-violet); }
+    .product-price-row {
+      display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
+    }
+    .product-price {
+      font-size: 14px; font-weight: 800; color: var(--accent-green); font-family: var(--font-mono);
+    }
+    .product-availability {
+      font-size: 8px; font-weight: 700; padding: 1px 5px; border-radius: 3px; text-transform: uppercase;
+    }
+    .avail-in_stock { background: rgba(74,222,128,0.12); color: var(--accent-green); border: 1px solid rgba(74,222,128,0.25); }
+    .avail-preorder { background: rgba(251,191,36,0.12); color: var(--accent-yellow); border: 1px solid rgba(251,191,36,0.25); }
+    .avail-out_of_stock { background: rgba(240,98,146,0.12); color: var(--accent-pink); border: 1px solid rgba(240,98,146,0.25); }
+    .avail-discontinued { background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid var(--border); }
+    .avail-unknown { background: rgba(255,255,255,0.03); color: var(--text-muted); }
+    .product-domain-row {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 10px; color: var(--text-muted);
+    }
   </style>
 </head>
 <body>
@@ -774,9 +1000,12 @@
       <button id="searchBtn" class="search-btn" aria-label="Run search">Search</button>
     </div>
     <div class="filter-row" role="group" aria-label="Result filters">
-      <button class="chip active" data-filter="all"     id="filterAll">All</button>
-      <button class="chip"        data-filter="public"  id="filterPublic">🌐 Web</button>
-      <button class="chip"        data-filter="private" id="filterPrivate">🔒 My Pages</button>
+      <button class="chip active" data-filter="all"      id="filterAll">All</button>
+      <button class="chip"        data-filter="public"   id="filterPublic">🌐 Web</button>
+      <button class="chip"        data-filter="private"  id="filterPrivate">🔒 My Pages</button>
+      <button class="chip"        data-filter="images"   id="filterImages">🖼️ Images</button>
+      <button class="chip"        data-filter="videos"   id="filterVideos">🎬 Videos</button>
+      <button class="chip"        data-filter="products" id="filterProducts">🛍️ Products</button>
     </div>
   </section>
 
@@ -860,6 +1089,8 @@
           </div>
         </div>
 
+        <button class="config-apply-btn" id="btnManageDomains" style="margin-top:12px; background:rgba(62,207,207,0.1); border:1px solid rgba(62,207,207,0.3); color:var(--accent-teal)">🌐 Manage Domains</button>
+
         <div class="uptime-row">
           <span>Uptime</span>
           <span class="uptime-val" id="uptimeVal">0s</span>
@@ -869,15 +1100,54 @@
       <!-- Configuration Panel -->
       <div class="panel">
         <div class="panel-title">🎛 Configuration</div>
-        <div class="config-field">
-          <label class="config-label" for="cfgDelay">Delay per domain (seconds)</label>
-          <input class="config-input" type="number" id="cfgDelay" min="0" max="60" step="0.5" value="1.5" />
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px">
+          <div class="config-field">
+            <label class="config-label" for="cfgDelay">Delay (sec)</label>
+            <input class="config-input" type="number" id="cfgDelay" min="0" max="60" step="0.5" value="1.5" />
+          </div>
+          <div class="config-field">
+            <label class="config-label" for="cfgDepth">Max Depth</label>
+            <input class="config-input" type="number" id="cfgDepth" min="0" max="10" step="1" value="3" />
+          </div>
         </div>
-        <div class="config-field">
-          <label class="config-label" for="cfgDepth">Max crawl depth</label>
-          <input class="config-input" type="number" id="cfgDepth" min="0" max="10" step="1" value="3" />
+        
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px">
+          <div class="config-field">
+            <label class="config-label" for="cfgWorkers">Workers</label>
+            <input class="config-input" type="number" id="cfgWorkers" min="1" max="20" step="1" value="3" />
+          </div>
+          <div class="config-field">
+            <label class="config-label" for="cfgMaxPages">Max Pages</label>
+            <input class="config-input" type="number" id="cfgMaxPages" min="0" step="10" value="0" />
+          </div>
         </div>
-        <button class="config-apply-btn" id="btnApplyConfig">Apply Configuration</button>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px">
+          <div class="config-field">
+            <label class="config-label" for="cfgTimeout">Timeout (s)</label>
+            <input class="config-input" type="number" id="cfgTimeout" min="5" max="120" step="1" value="20" />
+          </div>
+          <div class="config-field">
+            <label class="config-label" for="cfgContentSize">Max MB</label>
+            <input class="config-input" type="number" id="cfgContentSize" min="0.5" max="50" step="0.5" value="5.0" />
+          </div>
+        </div>
+
+        <div class="config-field" style="margin-top:6px; display:flex; flex-direction:column; gap:8px">
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:11px; text-transform:uppercase; color:var(--text-secondary)">
+            <input type="checkbox" id="cfgSitemaps" checked /> Follow sitemaps
+          </label>
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:11px; text-transform:uppercase; color:var(--text-secondary)">
+            <input type="checkbox" id="cfgProducts" checked /> Extract Products
+          </label>
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:11px; text-transform:uppercase; color:var(--text-secondary)">
+            <input type="checkbox" id="cfgRetryFailed" /> Retry failed URLs
+          </label>
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:11px; text-transform:uppercase; color:var(--text-secondary)">
+            <input type="checkbox" id="cfgRobotsTxt" checked /> Respect robots.txt
+          </label>
+        </div>
+        <button class="config-apply-btn" id="btnApplyConfig" style="margin-top:10px">Apply Configuration</button>
       </div>
 
       <!-- Seed URLs Panel -->
@@ -902,6 +1172,43 @@
 </div>
 
 <!-- =========================================================
+     Domain Management Modal
+========================================================= -->
+<div class="modal-overlay" id="domainModal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2 class="modal-title">🌐 Domain Classification &amp; Settings</h2>
+      <button class="modal-close" id="btnCloseDomainModal">&times;</button>
+    </div>
+    <div style="margin-bottom:15px">
+      <p style="font-size:12px; color:var(--text-secondary)">
+        Toggle classification of domain data (Public index vs Private) and enable/disable active crawler visits. Priority ranges from 1 (lowest) to 10 (highest).
+      </p>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="domain-table">
+        <thead>
+          <tr>
+            <th>Domain</th>
+            <th>Pages</th>
+            <th>Type</th>
+            <th>Crawl status</th>
+            <th>Priority</th>
+            <th>Sitemap URL</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="domainTableBody">
+          <tr>
+            <td colspan="7" style="text-align:center; color:var(--text-muted)">Loading domains...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- =========================================================
      JavaScript — All UI Logic
 ========================================================= -->
 <script>
@@ -912,6 +1219,7 @@
   let currentOffset = 0;
   let currentFilter = "all";
   const PAGE_SIZE   = 15;
+  let configInitialized = false;
 
   // -----------------------------------------------------------------------
   // Toast notifications
@@ -958,18 +1266,35 @@
     document.getElementById("pagination").hidden = true;
 
     try {
+      const sort = document.getElementById("sortSelect").value;
       const params = new URLSearchParams({
         q:      query,
         limit:  PAGE_SIZE,
         offset: offset,
       });
-      const data = await apiFetch(`/api/search?${params}`);
+
+      let endpoint = "/api/search";
+      if (currentFilter === "private") {
+        params.append("private_only", "true");
+      }
+      
+      if (currentFilter === "images") {
+        endpoint = "/api/search/images";
+      } else if (currentFilter === "videos") {
+        endpoint = "/api/search/videos";
+      } else if (currentFilter === "products") {
+        endpoint = "/api/search/products";
+        params.append("sort", sort);
+      }
+
+      const data = await apiFetch(`${endpoint}?${params}`);
       const { results, total_hits, returned } = data.data;
 
-      // Filter client-side
+      // Filter client-side ONLY if filter is public (since API doesn't have public_only parameter yet)
       let filtered = results;
-      if (currentFilter === "public")  filtered = results.filter(r => !r.is_private);
-      if (currentFilter === "private") filtered = results.filter(r =>  r.is_private);
+      if (currentFilter === "public") {
+        filtered = results.filter(r => !r.is_private);
+      }
 
       // Update count
       const countEl = document.getElementById("resultsCount");
@@ -982,30 +1307,91 @@
           <div class="state-message">
             <div class="icon">🔎</div>
             <p>No results for "<strong>${escapeHtml(query)}</strong>".<br />
-               Try different keywords or start the crawler to index more pages.</p>
+               Try different keywords or check your spelling.</p>
           </div>`;
         return;
       }
 
-      // Render results
-      container.innerHTML = filtered.map((r, i) => `
-        <article class="result-card" style="animation-delay:${i * 0.05}s" aria-label="Search result">
-          <div class="result-badge-row">
-            <span class="badge ${r.is_private ? 'badge-private' : 'badge-public'}">
-              ${r.is_private ? '🔒 Private' : '🌐 Web'}
-            </span>
-            <span class="result-domain">${escapeHtml(r.domain)}</span>
+      // Render based on current filter type
+      if (currentFilter === "images") {
+        container.innerHTML = `<div class="image-grid">` + filtered.map((r, i) => `
+          <div class="image-card" style="animation-delay:${i * 0.03}s" onclick="window.open('${escapeHtml(r.page_url)}', '_blank')">
+            <div class="image-wrapper">
+              <img src="${escapeHtml(r.thumbnail_url || r.media_url)}" alt="${escapeHtml(r.title)}" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><rect width=%22100%22 height=%22100%22 fill=%22%23222%22/><text x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23666%22 font-size=%2212%22>No Image</text></svg>'">
+            </div>
+            <div class="image-info">
+              <div class="image-title" title="${escapeHtml(r.title || 'Untitled')}">${escapeHtml(r.title || 'Untitled')}</div>
+              <div class="image-meta">
+                <span>${escapeHtml(r.domain)}</span>
+                <span>${r.width ? r.width + 'x' + r.height : ''}</span>
+              </div>
+            </div>
           </div>
-          <a class="result-title" href="${escapeHtml(r.url)}" target="_blank" rel="noopener" title="${escapeHtml(r.title)}">
-            ${escapeHtml(r.title || r.url)}
-          </a>
-          <div class="result-snippet">${r.snippet || ""}</div>
-          <div class="result-meta">
-            <span class="result-score">Score: ${r.score.toFixed(3)}</span>
-            <span class="result-time">${r.last_scanned ? formatTime(r.last_scanned) : ""}</span>
+        `).join("") + `</div>`;
+      } else if (currentFilter === "videos") {
+        container.innerHTML = `<div class="video-grid">` + filtered.map((r, i) => `
+          <div class="video-card" style="animation-delay:${i * 0.03}s">
+            <div class="video-thumbnail-wrapper" onclick="window.open('${escapeHtml(r.media_url)}', '_blank')">
+              <img src="${escapeHtml(r.thumbnail_url)}" alt="${escapeHtml(r.title)}" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><rect width=%22100%22 height=%22100%22 fill=%22%23222%22/><text x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23666%22 font-size=%2212%22>Video</text></svg>'">
+              ${r.duration_seconds ? `<span class="video-duration">${formatDuration(r.duration_seconds)}</span>` : ''}
+              <div class="video-play-btn">▶</div>
+            </div>
+            <div class="video-card-info">
+              <a class="video-card-title" href="${escapeHtml(r.page_url)}" target="_blank" rel="noopener" title="${escapeHtml(r.title)}">
+                ${escapeHtml(r.title || 'Untitled Video')}
+              </a>
+              <div class="video-card-meta">
+                <span>${escapeHtml(r.domain)}</span>
+                <span>${r.indexed_at ? formatTime(r.indexed_at) : ''}</span>
+              </div>
+            </div>
           </div>
-        </article>
-      `).join("");
+        `).join("") + `</div>`;
+      } else if (currentFilter === "products") {
+        container.innerHTML = `<div class="product-grid">` + filtered.map((r, i) => `
+          <div class="product-card" style="animation-delay:${i * 0.03}s">
+            <div class="product-img-wrapper">
+              <img src="${escapeHtml(r.image_url)}" alt="${escapeHtml(r.name)}" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2280%22><rect width=%2280%22 height=%2280%22 fill=%22%23222%22/><text x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23666%22 font-size=%2210%22>Product</text></svg>'">
+            </div>
+            <div class="product-details">
+              ${r.brand ? `<div class="product-brand">${escapeHtml(r.brand)}</div>` : ''}
+              <a class="product-name" href="${escapeHtml(r.url)}" target="_blank" rel="noopener" title="${escapeHtml(r.name)}">
+                ${escapeHtml(r.name)}
+              </a>
+              <div class="product-price-row">
+                <span class="product-price">${r.price ? formatCurrency(r.price, r.currency) : r.price_text || 'Contact for Price'}</span>
+                <span class="product-availability avail-${r.availability}">
+                  ${r.availability.replace('_', ' ')}
+                </span>
+              </div>
+              <div class="product-domain-row">
+                <span>${escapeHtml(r.domain)}</span>
+                <span>${r.sku ? 'SKU: ' + escapeHtml(r.sku) : ''}</span>
+              </div>
+            </div>
+          </div>
+        `).join("") + `</div>`;
+      } else {
+        // Standard Web search layout
+        container.innerHTML = filtered.map((r, i) => `
+          <article class="result-card" style="animation-delay:${i * 0.05}s" aria-label="Search result">
+            <div class="result-badge-row">
+              <span class="badge ${r.is_private ? 'badge-private' : 'badge-public'}">
+                ${r.is_private ? '🔒 Private' : '🌐 Web'}
+              </span>
+              <span class="result-domain">${escapeHtml(r.domain)}</span>
+            </div>
+            <a class="result-title" href="${escapeHtml(r.url)}" target="_blank" rel="noopener" title="${escapeHtml(r.title)}">
+              ${escapeHtml(r.title || r.url)}
+            </a>
+            <div class="result-snippet">${r.snippet || ""}</div>
+            <div class="result-meta">
+              <span class="result-score">Score: ${r.score.toFixed(3)}</span>
+              <span class="result-time">${r.last_scanned ? formatTime(r.last_scanned) : ""}</span>
+            </div>
+          </article>
+        `).join("");
+      }
 
       // Pagination
       renderPagination(total_hits, offset);
@@ -1084,8 +1470,19 @@
       document.getElementById("uptimeVal").textContent = formatUptime(up);
 
       // Update config defaults from server
-      if (c.delay_seconds !== undefined) document.getElementById("cfgDelay").value = c.delay_seconds;
-      if (c.max_depth !== undefined)     document.getElementById("cfgDepth").value  = c.max_depth;
+      if (!configInitialized) {
+        if (c.delay_seconds !== undefined) document.getElementById("cfgDelay").value = c.delay_seconds;
+        if (c.max_depth !== undefined)     document.getElementById("cfgDepth").value  = c.max_depth;
+        if (c.concurrent_workers !== undefined) document.getElementById("cfgWorkers").value = c.concurrent_workers;
+        if (c.max_pages_per_domain !== undefined) document.getElementById("cfgMaxPages").value = c.max_pages_per_domain;
+        if (c.request_timeout !== undefined) document.getElementById("cfgTimeout").value = c.request_timeout;
+        if (c.max_content_mb !== undefined) document.getElementById("cfgContentSize").value = c.max_content_mb;
+        if (c.follow_sitemaps !== undefined) document.getElementById("cfgSitemaps").checked = c.follow_sitemaps;
+        if (c.extract_products !== undefined) document.getElementById("cfgProducts").checked = c.extract_products;
+        if (c.retry_failed !== undefined) document.getElementById("cfgRetryFailed").checked = c.retry_failed;
+        if (c.respect_robots_txt !== undefined) document.getElementById("cfgRobotsTxt").checked = c.respect_robots_txt;
+        configInitialized = true;
+      }
 
     } catch {
       // Backend offline — don't crash the UI
@@ -1114,8 +1511,32 @@
   document.getElementById("btnApplyConfig").addEventListener("click", async () => {
     const delay = parseFloat(document.getElementById("cfgDelay").value);
     const depth = parseInt(document.getElementById("cfgDepth").value);
-    if (isNaN(delay) || isNaN(depth)) { showToast("Invalid config values", "error"); return; }
-    await crawlerAction("config", { delay_seconds: delay, max_depth: depth });
+    const workers = parseInt(document.getElementById("cfgWorkers").value);
+    const maxPages = parseInt(document.getElementById("cfgMaxPages").value);
+    const timeout = parseFloat(document.getElementById("cfgTimeout").value);
+    const contentSize = parseFloat(document.getElementById("cfgContentSize").value);
+    const sitemaps = document.getElementById("cfgSitemaps").checked;
+    const products = document.getElementById("cfgProducts").checked;
+    const retryFailed = document.getElementById("cfgRetryFailed").checked;
+    const respectRobots = document.getElementById("cfgRobotsTxt").checked;
+
+    if (isNaN(delay) || isNaN(depth) || isNaN(workers) || isNaN(maxPages) || isNaN(timeout) || isNaN(contentSize)) {
+      showToast("Invalid configuration values", "error");
+      return;
+    }
+
+    await crawlerAction("config", {
+      delay_seconds: delay,
+      max_depth: depth,
+      concurrent_workers: workers,
+      max_pages_per_domain: maxPages,
+      request_timeout: timeout,
+      max_content_mb: contentSize,
+      follow_sitemaps: sitemaps,
+      extract_products: products,
+      retry_failed: retryFailed,
+      respect_robots_txt: respectRobots
+    });
   });
 
   document.getElementById("btnSeed").addEventListener("click", async () => {
@@ -1135,6 +1556,143 @@
       showToast(`Seed error: ${err.message}`, "error");
     }
   });
+
+  // -----------------------------------------------------------------------
+  // Modal toggle & Domain management
+  // -----------------------------------------------------------------------
+  const domainModal = document.getElementById("domainModal");
+  document.getElementById("btnManageDomains").addEventListener("click", () => {
+    domainModal.classList.add("active");
+    loadDomainTable();
+  });
+  document.getElementById("btnCloseDomainModal").addEventListener("click", () => {
+    domainModal.classList.remove("active");
+  });
+  domainModal.addEventListener("click", (e) => {
+    if (e.target === domainModal) domainModal.classList.remove("active");
+  });
+
+  async function loadDomainTable() {
+    const tbody = document.getElementById("domainTableBody");
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--text-muted)">Loading domains...</td></tr>`;
+    try {
+      const data = await apiFetch("/api/domains");
+      const domains = data.data;
+      if (!domains || !domains.length) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--text-muted)">No domains discovered yet. Visit pages with the extension to seed.</td></tr>`;
+        return;
+      }
+      
+      tbody.innerHTML = domains.map((d) => {
+        const isPublic = d.is_public !== 0;
+        const crawlEnabled = d.crawl_enabled !== 0;
+        const priority = d.priority ?? 5;
+        const sitemap = d.sitemap_url || "";
+        const pages = d.page_count ?? 0;
+        
+        return `
+          <tr data-domain="${escapeHtml(d.domain)}">
+            <td style="font-weight:600; color:var(--text-primary)">${escapeHtml(d.domain)}</td>
+            <td>${pages.toLocaleString()}</td>
+            <td>
+              <button class="toggle-btn ${isPublic ? 'active-public' : 'active-private'}" onclick="toggleDomainPublic('${escapeHtml(d.domain)}', ${isPublic ? 0 : 1})">
+                ${isPublic ? '🌐 Public' : '🔒 Private'}
+              </button>
+            </td>
+            <td>
+              <button class="toggle-btn ${crawlEnabled ? 'active-enabled' : 'active-disabled'}" onclick="toggleDomainCrawl('${escapeHtml(d.domain)}', ${crawlEnabled ? 0 : 1})">
+                ${crawlEnabled ? '✔️ Enabled' : '❌ Disabled'}
+              </button>
+            </td>
+            <td>
+              <select class="sort-select" style="padding:2px 5px" onchange="changeDomainPriority('${escapeHtml(d.domain)}', this.value)">
+                ${[1,2,3,4,5,6,7,8,9,10].map(p => `<option value="${p}" ${p === priority ? 'selected' : ''}>${p}</option>`).join("")}
+              </select>
+            </td>
+            <td>
+              <input type="text" class="config-input" style="padding:3px 6px; font-size:11px" value="${escapeHtml(sitemap)}" placeholder="Autodetect" onblur="changeDomainSitemap('${escapeHtml(d.domain)}', this.value)" />
+            </td>
+            <td>
+              <button class="ctrl-btn btn-seed" style="padding:4px 8px; font-size:10px" onclick="saveDomainConfig('${escapeHtml(d.domain)}')">Save</button>
+            </td>
+          </tr>
+        `;
+      }).join("");
+      
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--accent-pink)">Error loading domains: ${escapeHtml(err.message)}</td></tr>`;
+    }
+  }
+
+  const domainEditState = {};
+
+  window.toggleDomainPublic = function(domain, newVal) {
+    const state = getDomainState(domain);
+    if (!state) return;
+    state.is_public = newVal;
+    const row = document.querySelector(`tr[data-domain="${domain}"]`);
+    const btn = row.querySelector('.active-public, .active-private');
+    btn.className = `toggle-btn ${newVal ? 'active-public' : 'active-private'}`;
+    btn.textContent = newVal ? '🌐 Public' : '🔒 Private';
+  }
+
+  window.toggleDomainCrawl = function(domain, newVal) {
+    const state = getDomainState(domain);
+    if (!state) return;
+    state.crawl_enabled = newVal;
+    const row = document.querySelector(`tr[data-domain="${domain}"]`);
+    const btn = row.querySelector('.active-enabled, .active-disabled');
+    btn.className = `toggle-btn ${newVal ? 'active-enabled' : 'active-disabled'}`;
+    btn.textContent = newVal ? '✔️ Enabled' : '❌ Disabled';
+  }
+
+  window.changeDomainPriority = function(domain, val) {
+    const state = getDomainState(domain);
+    if (state) state.priority = parseInt(val);
+  }
+
+  window.changeDomainSitemap = function(domain, val) {
+    const state = getDomainState(domain);
+    if (state) state.sitemap_url = val.trim();
+  }
+
+  window.saveDomainConfig = async function(domain) {
+    const state = getDomainState(domain);
+    if (!state) return;
+    try {
+      await apiFetch(`/api/domains/${domain}`, {
+        method: "POST",
+        body: JSON.stringify(state)
+      });
+      showToast(`Domain ${domain} updated successfully`, "success");
+      delete domainEditState[domain];
+      loadDomainTable();
+      refreshStats();
+    } catch (err) {
+      showToast(`Failed to update domain: ${err.message}`, "error");
+    }
+  }
+
+  function getDomainState(domain) {
+    if (!domainEditState[domain]) {
+      const row = document.querySelector(`tr[data-domain="${domain}"]`);
+      if (!row) return null;
+      
+      const pubBtn = row.querySelector('.active-public, .active-private');
+      const crawlBtn = row.querySelector('.active-enabled, .active-disabled');
+      const prioritySelect = row.querySelector('select');
+      const sitemapInput = row.querySelector('input[type="text"]');
+      
+      domainEditState[domain] = {
+        is_public: pubBtn.classList.contains('active-public') ? 1 : 0,
+        crawl_enabled: crawlBtn.classList.contains('active-enabled') ? 1 : 0,
+        priority: parseInt(prioritySelect.value),
+        sitemap_url: sitemapInput.value.trim(),
+        notes: ""
+      };
+    }
+    return domainEditState[domain];
+  }
 
   // -----------------------------------------------------------------------
   // Search input events
@@ -1172,15 +1730,37 @@
       document.querySelectorAll(".chip").forEach(c => c.classList.remove("active"));
       chip.classList.add("active");
       currentFilter = chip.dataset.filter;
+      
+      // Update sort dropdown visibility or choices based on active filter
+      const sortSelect = document.getElementById("sortSelect");
+      if (currentFilter === "products") {
+        // Show product sorting options
+        sortSelect.innerHTML = `
+          <option value="relevance">Relevance</option>
+          <option value="price_asc">Price: Low to High</option>
+          <option value="price_desc">Price: High to Low</option>
+        `;
+      } else {
+        // Standard sorting options
+        sortSelect.innerHTML = `
+          <option value="relevance">Relevance</option>
+          <option value="recent">Most Recent</option>
+        `;
+      }
+      
       if (currentQuery) runSearch(currentQuery, 0);
     });
+  });
+
+  document.getElementById("sortSelect").addEventListener("change", () => {
+    if (currentQuery) runSearch(currentQuery, 0);
   });
 
   // -----------------------------------------------------------------------
   // Utilities
   // -----------------------------------------------------------------------
   function escapeHtml(str) {
-    return String(str)
+    return String(str || "")
       .replace(/&/g,  "&amp;")
       .replace(/</g,  "&lt;")
       .replace(/>/g,  "&gt;")
@@ -1202,6 +1782,23 @@
     if (seconds < 60)   return `${Math.round(seconds)}s`;
     if (seconds < 3600) return `${Math.floor(seconds/60)}m ${Math.round(seconds%60)}s`;
     return `${Math.floor(seconds/3600)}h ${Math.floor((seconds%3600)/60)}m`;
+  }
+
+  function formatDuration(sec) {
+    if (!sec) return "0:00";
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  }
+
+  function formatCurrency(val, currency) {
+    if (currency === "BDT" || !currency) {
+      return `৳ ${val.toLocaleString('en-BD')}`;
+    }
+    if (currency === "USD") {
+      return `$${val.toLocaleString('en-US')}`;
+    }
+    return `${currency} ${val.toLocaleString()}`;
   }
 
   // -----------------------------------------------------------------------

@@ -91,11 +91,73 @@
       // Link extraction failure is non-critical — proceed without links
     }
 
+    // -------------------------------------------------------------------
+    // Image extraction
+    // -------------------------------------------------------------------
+    const images = [];
+    try {
+      document.querySelectorAll("img[src]").forEach((img) => {
+        const src = img.src;
+        if (!src) return;
+        if (!src.startsWith("http://") && !src.startsWith("https://")) return;
+        const alt = (img.alt || img.title || "").trim();
+        const width = img.naturalWidth || img.width || 0;
+        const height = img.naturalHeight || img.height || 0;
+        images.push({
+          url: src,
+          alt: alt.slice(0, 512),
+          width: width,
+          height: height,
+        });
+      });
+    } catch (e) {}
+
+    // -------------------------------------------------------------------
+    // Video extraction
+    // -------------------------------------------------------------------
+    const videos = [];
+    try {
+      document.querySelectorAll("video").forEach((vid) => {
+        let src = vid.src;
+        if (!src) {
+          const sourceEl = vid.querySelector("source");
+          if (sourceEl) src = sourceEl.src;
+        }
+        if (!src) return;
+        if (!src.startsWith("http://") && !src.startsWith("https://")) return;
+        const title = (vid.title || "").trim();
+        const poster = vid.poster || "";
+        videos.push({
+          url: src,
+          title: title.slice(0, 512),
+          thumbnail_url: poster,
+          duration_seconds: vid.duration || 0,
+        });
+      });
+
+      // YouTube/Vimeo iframe embeds
+      document.querySelectorAll("iframe[src]").forEach((iframe) => {
+        const src = iframe.src;
+        if (!src) return;
+        if (src.includes("youtube.com") || src.includes("youtu.be") || src.includes("vimeo.com")) {
+          const title = (iframe.title || "").trim();
+          videos.push({
+            url: src,
+            title: title.slice(0, 512),
+            thumbnail_url: "",
+            duration_seconds: 0,
+          });
+        }
+      });
+    } catch (e) {}
+
     return {
       url,
       title,
       text,
       links: Array.from(linkSet).slice(0, 500), // cap at 500 links per page
+      images: images.slice(0, 100),            // cap at 100 images
+      videos: videos.slice(0, 20),             // cap at 20 videos
     };
   }
 

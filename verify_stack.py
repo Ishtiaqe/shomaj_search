@@ -280,7 +280,9 @@ def test_search_bm25_ranking() -> None:
 
 def test_search_no_results() -> None:
     """A query with no matching content should return empty results, not an error."""
-    code, body = http_get("/api/search?q=zzzzxxxxxnonexistentkeyword9999")
+    import time
+    term = f"zzzzxxxxxnonexistentkeyword9999_{int(time.time())}"
+    code, body = http_get(f"/api/search?q={term}")
     _record("Search with no matches returns 200", code == 200)
     data = body.get("data", {})
     _record("total_hits is 0 for missing term", data.get("total_hits", -1) == 0)
@@ -342,15 +344,24 @@ def test_crawler_state_machine() -> None:
 
 
 def test_crawler_config() -> None:
-    """POST /api/crawl/config should update delay and depth."""
-    code, body = http_post("/api/crawl/config", {"delay_seconds": 2.5, "max_depth": 5})
+    """POST /api/crawl/config should update delay, depth, and robots.txt setting."""
+    code, body = http_post("/api/crawl/config", {
+        "delay_seconds": 2.5,
+        "max_depth": 5,
+        "respect_robots_txt": False
+    })
     _record("POST /api/crawl/config returns 200", code == 200)
     data = body.get("data", {})
     _record("delay_seconds updated to 2.5", data.get("delay_seconds") == 2.5)
     _record("max_depth updated to 5",       data.get("max_depth") == 5)
+    _record("respect_robots_txt updated to False", data.get("respect_robots_txt") is False)
 
     # Restore defaults
-    http_post("/api/crawl/config", {"delay_seconds": 1.5, "max_depth": 3})
+    http_post("/api/crawl/config", {
+        "delay_seconds": 1.5,
+        "max_depth": 3,
+        "respect_robots_txt": True
+    })
 
 
 def test_seed_endpoint() -> None:
@@ -415,6 +426,134 @@ def test_invalid_index_payload() -> None:
     _record("Invalid URL scheme in /api/index returns 422", code == 422)
 
 
+def test_domains_management() -> None:
+    """Test GET /api/domains and POST /api/domains/{domain}"""
+    code, body = http_get("/api/domains")
+    _record("GET /api/domains returns 200", code == 200)
+    data = body.get("data", [])
+    _record("Domains list is a list", isinstance(data, list))
+    
+    # Configure a test domain
+    payload = {
+        "is_public": 1,
+        "crawl_enabled": 0,
+        "priority": 7,
+        "sitemap_url": "https://example.com/sitemap_test.xml",
+        "notes": "Test domain notes"
+    }
+    code2, body2 = http_post("/api/domains/example.com", payload)
+    _record("POST /api/domains/example.com returns 200", code2 == 200)
+    _record("Saved domain has crawl_enabled = 0", body2.get("data", {}).get("crawl_enabled") == 0)
+
+
+def test_products_indexing_and_search() -> None:
+    """Index a page with product structured data, then search it."""
+    import time
+    conn = sqlite3.connect("shomaj_search.db")
+    conn.execute("DELETE FROM product_index WHERE url = ?", ("https://example.com/products/iphone-17-test",))
+    conn.execute("DELETE FROM product_fts WHERE url = ?", ("https://example.com/products/iphone-17-test",))
+    
+    now = int(time.time())
+    conn.execute(
+        """
+        INSERT INTO product_index (url, name, description, brand, sku, price, price_text, currency, availability, image_url, domain, is_private, schema_type, raw_schema, extracted_at, last_checked)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            "https://example.com/products/iphone-17-test",
+            "iPhone 17 Pro Max",
+            "Cheapest flagship Apple device with ready stock",
+            "Apple",
+            "IPH17PM-TEST",
+            170000.00,
+            "৳ 1,70,000",
+            "BDT",
+            "in_stock",
+            "https://example.com/images/iphone17.png",
+            "example.com",
+            0,
+            "json-ld",
+            "{}",
+            now,
+            now
+        )
+    )
+    conn.execute("INSERT INTO product_fts (url, name, description, brand) VALUES (?, ?, ?, ?)",
+                 ("https://example.com/products/iphone-17-test", "iPhone 17 Pro Max", "Cheapest flagship Apple device with ready stock", "Apple"))
+    conn.commit()
+    conn.close()
+    
+    code, body = http_get("/api/search/products?q=iPhone+17+Pro+Max&sort=price_asc")
+    _record("GET /api/search/products returns 200", code == 200)
+    data = body.get("data", {})
+    results = data.get("results", [])
+    _record("Product search returns at least 1 hit", len(results) > 0)
+    if results:
+        first = results[0]
+        _record("Product search returns correct SKU", first.get("sku") == "IPH17PM-TEST")
+        _record("Product search returns correct price", first.get("price") == 170000.0)
+        _record("Product search returns availability", first.get("availability") == "in_stock")
+
+
+def test_search_cache_invalidation() -> None:
+    """Search results caching and invalidation on new index writes."""
+    import time
+    ts = int(time.time())
+    keyword = f"cachingtest{ts}"
+    url = f"https://example.com/caching-test-page-{ts}"
+
+    # 1. Perform search
+    code1, body1 = http_get(f"/api/search?q={keyword}")
+    _record("GET /api/search with new query returns 200", code1 == 200)
+    data1 = body1.get("data", {})
+    _record("Initial cached search has 0 hits", data1.get("total_hits", 0) == 0)
+
+    # 2. Ingest document containing the keyword
+    payload = {
+        "url": url,
+        "title": "Caching Test Title",
+        "text": f"This is {keyword} data page text.",
+        "links": [],
+        "images": [],
+        "videos": []
+    }
+    code_idx, _ = http_post("/api/index", payload)
+    _record("Ingesting test doc returns 200", code_idx == 200)
+
+    # 3. Perform search again — should hit the DB (due to cache invalidation) and find the page
+    code2, body2 = http_get(f"/api/search?q={keyword}")
+    _record("Second search returns 200", code2 == 200)
+    data2 = body2.get("data", {})
+    _record("Search after invalidation returns 1 hit", data2.get("total_hits", 0) == 1)
+
+
+def test_safe_search_filtering() -> None:
+    """Safe Search filtering on query keywords and indexed documents."""
+    # 1. Ingest an adult-themed page
+    payload = {
+        "url": "https://example.com/some-adult-content-xxx-page",
+        "title": "Unsafe adult portal",
+        "text": "This is a dummy portal containing forbidden adult terms.",
+        "links": [],
+        "images": [],
+        "videos": []
+    }
+    code_idx, _ = http_post("/api/index", payload)
+    _record("Ingesting unsafe page returns 200", code_idx == 200)
+
+    # 2. Search with safe_search=True (default) for 'adult' -> should return 0 hits
+    code_safe, body_safe = http_get("/api/search?q=adult&safe_search=true")
+    _record("Safe search active returns 200", code_safe == 200)
+    hits_safe = body_safe.get("data", {}).get("total_hits", 0)
+    _record("Safe search query filters out adult results", hits_safe == 0)
+
+    # 3. Search with safe_search=False -> should return at least 1 hit
+    code_unsafe, body_unsafe = http_get("/api/search?q=adult&safe_search=false")
+    _record("Unsafe search returns 200", code_unsafe == 200)
+    hits_unsafe = body_unsafe.get("data", {}).get("total_hits", 0)
+    _record("Unsafe search query allows adult results", hits_unsafe > 0)
+
+
 # ---------------------------------------------------------------------------
 # Main runner
 # ---------------------------------------------------------------------------
@@ -456,6 +595,10 @@ def main() -> int:
         ("15. OpenAPI Docs",             test_docs_endpoint),
         ("16. Dashboard HTML Served",    test_dashboard_served),
         ("17. Invalid Payload Rejected", test_invalid_index_payload),
+        ("18. Domain Management API",    test_domains_management),
+        ("19. Product Search API",       test_products_indexing_and_search),
+        ("20. Caching & Invalidation",    test_search_cache_invalidation),
+        ("21. Safe Search Filtering",     test_safe_search_filtering),
     ]
 
     for group_name, fn in tests:

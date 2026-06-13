@@ -8,6 +8,7 @@ import sqlite3
 import threading
 import os
 from pathlib import Path
+from cache import search_cache
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -160,6 +161,72 @@ CREATE TABLE IF NOT EXISTS search_history (
 
 CREATE INDEX IF NOT EXISTS idx_history_time
     ON search_history (searched_at DESC);
+
+-- -----------------------------------------------------------------------
+-- Product Index — structured product data extracted from e-commerce pages.
+-- Prices are stored as REAL (BDT or detected currency) for numeric sorting.
+-- availability: 'in_stock' | 'out_of_stock' | 'preorder' | 'discontinued' | 'unknown'
+-- schema_type: 'json-ld' | 'opengraph' | 'meta' | 'microdata' | 'heuristic'
+-- NO media files are stored locally — image_url is a remote reference only.
+-- -----------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS product_index (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    url             TEXT UNIQUE NOT NULL,
+    name            TEXT NOT NULL DEFAULT '',
+    description     TEXT NOT NULL DEFAULT '',
+    brand           TEXT NOT NULL DEFAULT '',
+    sku             TEXT NOT NULL DEFAULT '',
+    price           REAL,                           -- NULL if unknown
+    price_text      TEXT NOT NULL DEFAULT '',       -- display string, e.g. "৳ 1,20,000"
+    currency        TEXT NOT NULL DEFAULT 'BDT',
+    availability    TEXT NOT NULL DEFAULT 'unknown',
+    image_url       TEXT NOT NULL DEFAULT '',
+    domain          TEXT NOT NULL,
+    is_private      INTEGER NOT NULL DEFAULT 0,
+    schema_type     TEXT NOT NULL DEFAULT '',
+    raw_schema      TEXT NOT NULL DEFAULT '',
+    extracted_at    INTEGER NOT NULL,
+    last_checked    INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_domain
+    ON product_index (domain);
+
+CREATE INDEX IF NOT EXISTS idx_product_avail_price
+    ON product_index (availability, price);
+
+CREATE INDEX IF NOT EXISTS idx_product_price
+    ON product_index (price);
+
+-- FTS5 for product name/description/brand search
+CREATE VIRTUAL TABLE IF NOT EXISTS product_fts USING fts5(
+    url         UNINDEXED,
+    name,
+    description,
+    brand,
+    tokenize = 'porter unicode61'
+);
+
+-- -----------------------------------------------------------------------
+-- Managed Domains — per-domain configuration and public/private override.
+-- is_public = 1  → allow active crawler, pages shown as public
+-- is_public = 0  → private/intranet, extension-only
+-- crawl_enabled  → even if public, can disable active crawling
+-- priority       → 1 (lowest) to 10 (highest) for crawl scheduling
+-- -----------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS managed_domains (
+    domain        TEXT    PRIMARY KEY,
+    is_public     INTEGER NOT NULL DEFAULT 1,
+    crawl_enabled INTEGER NOT NULL DEFAULT 1,
+    priority      INTEGER NOT NULL DEFAULT 5,
+    sitemap_url   TEXT    NOT NULL DEFAULT '',
+    notes         TEXT    NOT NULL DEFAULT '',
+    added_at      INTEGER NOT NULL,
+    last_crawled  INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_managed_domains_priority
+    ON managed_domains (priority DESC, domain);
 """
 
 
@@ -167,11 +234,24 @@ def init_db() -> None:
     """
     Creates all tables and indexes.
     Safe to call multiple times (all statements are CREATE IF NOT EXISTS).
+    Also applies any schema migrations for columns added after initial creation.
     """
     conn = get_db()
     conn.executescript(_SCHEMA_SQL)
+
+    # Schema migrations — add columns that may not exist in older DBs
+    _safe_add_column(conn, "crawl_metadata", "source", "TEXT NOT NULL DEFAULT 'extension'")
+
     conn.commit()
     print(f"[DB] Schema initialised → {DB_PATH.resolve()}")
+
+
+def _safe_add_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+    """Adds a column to an existing table, ignoring the error if it already exists."""
+    try:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+    except Exception:
+        pass  # Column already exists or table not found — both are fine
 
 
 # ---------------------------------------------------------------------------
@@ -211,6 +291,7 @@ def upsert_index(
         """,
         (url, domain, now, is_private),
     )
+    search_cache.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -273,6 +354,7 @@ def upsert_media(
         """,
         (media_url, page_url, media_type, title, description),
     )
+    search_cache.clear()
 
 
 def log_search_history(conn: sqlite3.Connection, query: str, result_count: int) -> None:
@@ -337,3 +419,168 @@ def get_queue_stats(conn: sqlite3.Connection) -> dict:
         "SELECT status, COUNT(*) AS cnt FROM queue GROUP BY status"
     ).fetchall()
     return {row["status"]: row["cnt"] for row in rows}
+
+
+# ---------------------------------------------------------------------------
+# Helpers — Products
+# ---------------------------------------------------------------------------
+
+def upsert_product(
+    conn: sqlite3.Connection,
+    url: str,
+    name: str,
+    description: str,
+    brand: str,
+    sku: str,
+    price,          # float | None
+    price_text: str,
+    currency: str,
+    availability: str,
+    image_url: str,
+    domain: str,
+    is_private: int,
+    schema_type: str,
+    raw_schema: str,
+) -> None:
+    """
+    Inserts or updates a product record in product_index and product_fts.
+    product_fts is always rebuilt from product_index to stay in sync.
+    """
+    import time as _time
+    now = int(_time.time())
+
+    conn.execute(
+        """
+        INSERT INTO product_index
+            (url, name, description, brand, sku, price, price_text, currency,
+             availability, image_url, domain, is_private, schema_type, raw_schema,
+             extracted_at, last_checked)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(url) DO UPDATE SET
+            name         = excluded.name,
+            description  = excluded.description,
+            brand        = excluded.brand,
+            sku          = excluded.sku,
+            price        = excluded.price,
+            price_text   = excluded.price_text,
+            currency     = excluded.currency,
+            availability = excluded.availability,
+            image_url    = excluded.image_url,
+            schema_type  = excluded.schema_type,
+            raw_schema   = excluded.raw_schema,
+            last_checked = excluded.last_checked
+        """,
+        (
+            url, name, description, brand, sku, price, price_text, currency,
+            availability, image_url, domain, is_private, schema_type, raw_schema,
+            now, now,
+        ),
+    )
+
+    # Rebuild FTS row
+    conn.execute("DELETE FROM product_fts WHERE url = ?", (url,))
+    conn.execute(
+        "INSERT INTO product_fts (url, name, description, brand) VALUES (?,?,?,?)",
+        (url, name, description, brand),
+    )
+    search_cache.clear()
+
+
+# ---------------------------------------------------------------------------
+# Helpers — Managed Domains
+# ---------------------------------------------------------------------------
+
+def upsert_managed_domain(
+    conn: sqlite3.Connection,
+    domain: str,
+    is_public: int = 1,
+    crawl_enabled: int = 1,
+    priority: int = 5,
+    sitemap_url: str = "",
+    notes: str = "",
+) -> None:
+    """
+    Creates or updates a domain's configuration in managed_domains.
+    When a domain is set to is_public=1, all existing crawl_metadata rows
+    for that domain are updated to is_private=0.
+    """
+    import time as _time
+    now = int(_time.time())
+
+    conn.execute(
+        """
+        INSERT INTO managed_domains
+            (domain, is_public, crawl_enabled, priority, sitemap_url, notes, added_at)
+        VALUES (?,?,?,?,?,?,?)
+        ON CONFLICT(domain) DO UPDATE SET
+            is_public     = excluded.is_public,
+            crawl_enabled = excluded.crawl_enabled,
+            priority      = excluded.priority,
+            sitemap_url   = CASE WHEN excluded.sitemap_url != '' THEN excluded.sitemap_url
+                                 ELSE managed_domains.sitemap_url END,
+            notes         = CASE WHEN excluded.notes != '' THEN excluded.notes
+                                 ELSE managed_domains.notes END
+        """,
+        (domain, is_public, crawl_enabled, priority, sitemap_url, notes, now),
+    )
+
+    # Propagate public/private label to all existing pages for this domain
+    new_private = 0 if is_public else 1
+    conn.execute(
+        "UPDATE crawl_metadata SET is_private = ? WHERE domain = ?",
+        (new_private, domain),
+    )
+    conn.execute(
+        "UPDATE product_index SET is_private = ? WHERE domain = ?",
+        (new_private, domain),
+    )
+    search_cache.clear()
+
+
+def get_domain_config(conn: sqlite3.Connection, domain: str) -> dict | None:
+    """Returns managed_domains row for a domain, or None if not managed."""
+    row = conn.execute(
+        "SELECT * FROM managed_domains WHERE domain = ?", (domain,)
+    ).fetchone()
+    if row is None:
+        return None
+    return dict(row)
+
+
+def get_all_domains(conn: sqlite3.Connection) -> list[dict]:
+    """
+    Returns all known domains with their managed config (if any) and page counts.
+    """
+    rows = conn.execute(
+        """
+        SELECT
+            cm.domain,
+            COUNT(cm.url)     AS page_count,
+            SUM(cm.is_private) AS private_count,
+            MAX(cm.last_scanned) AS last_scanned,
+            md.is_public,
+            md.crawl_enabled,
+            md.priority,
+            md.sitemap_url,
+            md.last_crawled
+        FROM crawl_metadata cm
+        LEFT JOIN managed_domains md ON md.domain = cm.domain
+        GROUP BY cm.domain
+        ORDER BY page_count DESC
+        """
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def mark_domain_crawled(conn: sqlite3.Connection, domain: str) -> None:
+    """Updates last_crawled timestamp for a managed domain."""
+    import time as _time
+    conn.execute(
+        """
+        INSERT INTO managed_domains (domain, added_at, last_crawled)
+        VALUES (?, ?, ?)
+        ON CONFLICT(domain) DO UPDATE SET last_crawled = excluded.last_crawled
+        """,
+        (domain, int(_time.time()), int(_time.time())),
+    )
+
